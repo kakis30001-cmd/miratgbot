@@ -8,6 +8,10 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 BASE_URL = os.getenv("BASE_URL", "https://localhost:8080")
 
+# Google Custom Search API
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_SEARCH_CX = os.getenv("GOOGLE_SEARCH_CX")
+
 # ID чата сервера
 GROUP_CHAT_ID = -1003891930776
 
@@ -16,12 +20,12 @@ CREATOR = "@ZOJlOTOY"
 OWNER = "@pelmewki379"
 OWNER_TG = "pelmewki379"
 
-# AI модели (основная + запасные) — РАБОЧИЕ БЕСПЛАТНЫЕ
+# AI модели (основная + запасные)
 AI_MODELS = [
-    "google/gemini-2.0-flash-exp",        # Бесплатный Gemini
-    "meta-llama/llama-3.3-70b-instruct",  # Бесплатная Llama
-    "deepseek/deepseek-chat",             # DeepSeek
-    "qwen/qwen-2.5-72b-instruct",         # Qwen запасной
+    "google/gemini-2.0-flash",           # Основная
+    "google/gemini-2.0-flash-exp",       # Запасная
+    "meta-llama/llama-3.3-70b-instruct", # Llama
+    "deepseek/deepseek-chat",            # DeepSeek
 ]
 
 # Интервал спонтанных сообщений (в секундах)
