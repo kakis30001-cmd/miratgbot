@@ -1,5 +1,5 @@
 """
-Утилиты для Миры: проверка онлайна, поиск модов.
+Утилиты для Миры: проверка онлайна, поиск модов через Google API.
 """
 
 import asyncio
@@ -7,7 +7,6 @@ import aiohttp
 import re
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List
-from urllib.parse import quote_plus
 from mcstatus import JavaServer
 import config
 from memory import chat_memory
@@ -48,363 +47,166 @@ async def get_server_online() -> Tuple[int, int]:
         )
 
 
-# ========== НАСТОЯЩИЙ ПОИСК МОДОВ ==========
+# ========== ПОИСК МОДОВ ЧЕРЕЗ GOOGLE API ==========
 
-async def search_mods_modrinth(query: str) -> List[dict]:
+async def search_mods_google_api(query: str) -> str:
     """
-    Поиск модов через Modrinth API (бесплатный, без ключа).
+    Поиск модов через Google Custom Search API.
+    Возвращает отформатированный контекст для AI.
     """
+    
+    if not config.GOOGLE_API_KEY or not config.GOOGLE_SEARCH_CX:
+        print("⚠️ Google API ключи не настроены")
+        return ""
+    
     try:
+        # Формируем поисковый запрос — ищем только на сайтах модов
+        search_query = f"minecraft mod {query}"
+        
         async with aiohttp.ClientSession() as session:
-            url = "https://api.modrinth.com/v2/search"
+            url = "https://www.googleapis.com/customsearch/v1"
             params = {
-                "query": query,
-                "limit": 5,
-                "facets": '[["project_type:mod"]]',
-            }
-            
-            headers = {
-                "User-Agent": "MiraBot/1.0 (LostEarth Minecraft Server; mira@lostearth.com)"
-            }
-            
-            async with session.get(url, params=params, headers=headers, timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    results = []
-                    for hit in data.get("hits", []):
-                        results.append({
-                            "name": hit["title"],
-                            "url": f"https://modrinth.com/mod/{hit['slug']}",
-                            "summary": hit.get("description", "")[:200],
-                            "downloads": hit.get("downloads", 0),
-                            "source": "Modrinth"
-                        })
-                    if results:
-                        print(f"✅ Modrinth: найдено {len(results)} модов")
-                    return results
-                else:
-                    print(f"❌ Modrinth API ошибка: {resp.status}")
-    except Exception as e:
-        print(f"❌ Ошибка Modrinth: {e}")
-    
-    return []
-
-
-async def search_mods_curseforge_scrape(query: str) -> List[dict]:
-    """
-    Поиск через прямую страницу поиска CurseForge.
-    Парсим HTML страницу с результатами.
-    """
-    try:
-        async with aiohttp.ClientSession() as session:
-            search_url = "https://www.curseforge.com/minecraft/search"
-            params = {
-                "search": query,
-                "class": "mods",
-                "page": 1
-            }
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "ru,en;q=0.9",
-            }
-            
-            async with session.get(search_url, params=params, headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    results = _parse_curseforge_search(html)
-                    if results:
-                        print(f"✅ CurseForge парсинг: найдено {len(results)} модов")
-                    return results
-                else:
-                    print(f"❌ CurseForge страница: статус {resp.status}")
-    except Exception as e:
-        print(f"❌ Ошибка парсинга CurseForge: {e}")
-    
-    return []
-
-
-def _parse_curseforge_search(html: str) -> List[dict]:
-    """Парсинг результатов поиска CurseForge"""
-    results = []
-    
-    # Ищем карточки модов - паттерн для новых версий сайта
-    # Ищем ссылки вида /minecraft/mc-mods/название-мода
-    pattern = r'/minecraft/mc-mods/([^/"]+)[^"]*"[^>]*>\s*(?:<[^>]*>)*\s*([^<]{2,100})\s*(?:</[^>]*>\s*)*</a>'
-    matches = re.findall(pattern, html, re.IGNORECASE)
-    
-    if not matches:
-        # Альтернативный паттерн
-        pattern2 = r'href="(/minecraft/mc-mods/[^"]+)"[^>]*>\s*<[^>]+class="[^"]*name[^"]*"[^>]*>([^<]+)</'
-        matches = re.findall(pattern2, html, re.IGNORECASE)
-    
-    seen = set()
-    for slug_or_url, name in matches:
-        name = name.strip()
-        if not name or len(name) < 3:
-            continue
-        
-        # Нормализуем имя
-        name = re.sub(r'\s+', ' ', name)
-        name = re.sub(r'&amp;', '&', name)
-        name = re.sub(r'&#x27;', "'", name)
-        
-        if name.lower() in seen:
-            continue
-        
-        seen.add(name.lower())
-        
-        # Формируем URL
-        if slug_or_url.startswith('/'):
-            url = f"https://www.curseforge.com{slug_or_url}"
-        else:
-            url = f"https://www.curseforge.com/minecraft/mc-mods/{slug_or_url}"
-        
-        results.append({
-            "name": name,
-            "url": url,
-            "summary": "",
-            "downloads": 0,
-            "source": "CurseForge"
-        })
-        
-        if len(results) >= 5:
-            break
-    
-    return results
-
-
-async def search_mods_duckduckgo(query: str) -> List[dict]:
-    """
-    Поиск через DuckDuckGo Instant Answer API.
-    Бесплатно, без ключа.
-    """
-    try:
-        async with aiohttp.ClientSession() as session:
-            # DuckDuckGo имеет неофициальный API для instant answers
-            url = "https://api.duckduckgo.com/"
-            params = {
-                "q": f"minecraft mod {query} site:curseforge.com OR site:modrinth.com",
-                "format": "json",
-                "no_html": 1,
-                "skip_disambig": 1,
+                "key": config.GOOGLE_API_KEY,
+                "cx": config.GOOGLE_SEARCH_CX,
+                "q": search_query,
+                "num": 5,
+                "lr": "lang_ru|lang_en",
+                "safe": "off",
             }
             
             async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
+                    items = data.get("items", [])
                     
-                    results = []
+                    if not items:
+                        print("❌ Google API: ничего не найдено")
+                        return ""
                     
-                    # Проверяем RelatedTopics
-                    for topic in data.get("RelatedTopics", [])[:5]:
-                        if "Text" in topic and "FirstURL" in topic:
-                            text = topic["Text"]
-                            url = topic["FirstURL"]
-                            
-                            # Извлекаем название из текста
-                            name = re.sub(r'<[^>]+>', '', text)
-                            name = name.split(' - ')[0].strip()
-                            if len(name) > 50:
-                                name = name[:50] + "..."
-                            
-                            if "curseforge.com" in url or "modrinth.com" in url:
-                                results.append({
-                                    "name": name,
-                                    "url": url,
-                                    "summary": "",
-                                    "downloads": 0,
-                                    "source": "DuckDuckGo"
-                                })
+                    # Собираем контекст для AI
+                    context_lines = []
+                    for i, item in enumerate(items[:5], 1):
+                        title = item.get("title", "").strip()
+                        snippet = item.get("snippet", "").strip()
+                        link = item.get("link", "").strip()
+                        
+                        # Чистим HTML сущности
+                        title = re.sub(r'&amp;', '&', title)
+                        title = re.sub(r'&#x27;', "'", title)
+                        snippet = re.sub(r'&amp;', '&', snippet)
+                        snippet = re.sub(r'&#x27;', "'", snippet)
+                        
+                        context_lines.append(f"Результат {i}:")
+                        context_lines.append(f"Название: {title}")
+                        if snippet:
+                            if len(snippet) > 200:
+                                snippet = snippet[:200] + "..."
+                            context_lines.append(f"Описание: {snippet}")
+                        context_lines.append(f"Ссылка: {link}")
+                        context_lines.append("")
                     
-                    if results:
-                        print(f"✅ DuckDuckGo: найдено {len(results)} ссылок")
-                        return results
+                    context = "\n".join(context_lines)
+                    print(f"✅ Google API: найдено {len(items)} результатов")
+                    return context
+                    
+                elif resp.status == 429:
+                    print("❌ Google API: превышен лимит запросов (429)")
+                elif resp.status == 403:
+                    print("❌ Google API: доступ запрещён (403) - проверь ключ и CX")
+                else:
+                    error_text = await resp.text()
+                    print(f"❌ Google API ошибка ({resp.status}): {error_text[:200]}")
+                    
     except Exception as e:
-        print(f"❌ Ошибка DuckDuckGo: {e}")
+        print(f"❌ Ошибка Google API: {e}")
     
-    return []
+    return ""
 
 
-async def search_mods_google_scrape(query: str) -> List[dict]:
+async def search_mods_fallback(query: str) -> str:
     """
-    Поиск через Google (парсинг результатов).
-    Ищет только на curseforge.com и modrinth.com.
+    Запасной поиск если Google API недоступен.
+    Ищет через Modrinth API + DuckDuckGo.
     """
+    context_lines = []
+    
+    # 1. Пробуем Modrinth API
     try:
-        search_query = f'site:curseforge.com/minecraft/mc-mods OR site:modrinth.com/mod {query}'
-        encoded_query = quote_plus(search_query)
-        
         async with aiohttp.ClientSession() as session:
-            url = f"https://www.google.com/search?q={encoded_query}&num=10"
-            
+            url = "https://api.modrinth.com/v2/search"
+            params = {
+                "query": query,
+                "limit": 3,
+                "facets": '[["project_type:mod"]]',
+            }
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml",
-                "Accept-Language": "ru-RU,ru;q=0.9",
+                "User-Agent": "MiraBot/1.0 (LostEarth Minecraft Server)"
             }
             
-            async with session.get(url, headers=headers, timeout=15) as resp:
+            async with session.get(url, params=params, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
-                    html = await resp.text()
-                    results = _parse_google_results(html)
-                    if results:
-                        print(f"✅ Google: найдено {len(results)} ссылок")
-                    return results
-                elif resp.status == 429:
-                    print("❌ Google заблокировал (429)")
-                else:
-                    print(f"❌ Google: статус {resp.status}")
+                    data = await resp.json()
+                    for i, hit in enumerate(data.get("hits", [])[:3], 1):
+                        title = hit.get("title", "")
+                        desc = hit.get("description", "")[:200]
+                        slug = hit.get("slug", "")
+                        context_lines.append(f"Результат {i} (Modrinth):")
+                        context_lines.append(f"Название: {title}")
+                        if desc:
+                            context_lines.append(f"Описание: {desc}")
+                        context_lines.append(f"Ссылка: https://modrinth.com/mod/{slug}")
+                        context_lines.append("")
     except Exception as e:
-        print(f"❌ Ошибка Google: {e}")
+        print(f"⚠️ Modrinth fallback: {e}")
     
-    return []
+    # 2. Если Modrinth не дал результатов — даём ссылки на поиск
+    if not context_lines:
+        from urllib.parse import quote_plus
+        encoded = quote_plus(query)
+        context_lines.append("Результат 1 (CurseForge поиск):")
+        context_lines.append(f"Название: Поиск модов '{query}' на CurseForge")
+        context_lines.append(f"Ссылка: https://www.curseforge.com/minecraft/search?search={encoded}&class=mods")
+        context_lines.append("")
+        context_lines.append("Результат 2 (Modrinth поиск):")
+        context_lines.append(f"Название: Поиск модов '{query}' на Modrinth")
+        context_lines.append(f"Ссылка: https://modrinth.com/mods?q={encoded}")
+        context_lines.append("")
+    
+    return "\n".join(context_lines)
 
 
-def _parse_google_results(html: str) -> List[dict]:
-    """Парсинг результатов Google"""
-    results = []
-    
-    # Ищем ссылки и заголовки в результатах Google
-    # Паттерн для современных результатов Google
-    pattern = r'<a[^>]*href="(https?://(?:www\.)?(?:curseforge\.com/minecraft/mc-mods/[^"]+|modrinth\.com/mod/[^"]+))"[^>]*>(?:<[^>]*>)*([^<]{5,200})</a>'
-    matches = re.findall(pattern, html, re.IGNORECASE)
-    
-    if not matches:
-        # Альтернативный паттерн
-        pattern2 = r'href="(https?://[^"]*(?:curseforge\.com/minecraft/mc-mods|modrinth\.com/mod)[^"]*)"[^>]*>(?:<[^>]+>)*([^<]+)</'
-        matches = re.findall(pattern2, html, re.IGNORECASE)
-    
-    seen = set()
-    for url, title in matches[:10]:
-        # Очищаем заголовок
-        title = re.sub(r'<[^>]+>', '', title)
-        title = re.sub(r'\s+', ' ', title).strip()
-        title = re.sub(r'&amp;', '&', title)
-        title = re.sub(r'&#x27;', "'", title)
-        
-        if not title or len(title) < 3:
-            continue
-        
-        # Убираем мусор из заголовка
-        title = re.sub(r' - Minecraft.*$', '', title)
-        title = re.sub(r' \| CurseForge.*$', '', title)
-        
-        if title.lower() in seen or url in seen:
-            continue
-        
-        seen.add(title.lower())
-        seen.add(url)
-        
-        source = "CurseForge" if "curseforge" in url else "Modrinth"
-        
-        results.append({
-            "name": title[:100],
-            "url": url,
-            "summary": "",
-            "downloads": 0,
-            "source": source
-        })
-    
-    return results[:5]
-
-
-# ========== Основная функция поиска ==========
-
-async def search_mods(query: str) -> List[dict]:
+async def search_mods_for_ai(query: str) -> str:
     """
-    Многоуровневый поиск модов.
-    Пробуем разные источники пока не найдём.
+    Основная функция поиска модов.
+    Возвращает контекст для передачи AI.
+    Сначала Google API, потом fallback.
     """
-    results = []
     
-    # Уровень 1: Modrinth API (самый надёжный)
-    results = await search_mods_modrinth(query)
-    if len(results) >= 2:
-        return results
+    # 1. Google Custom Search
+    context = await search_mods_google_api(query)
+    if context:
+        return context
     
-    # Уровень 2: Google поиск
-    google_results = await search_mods_google_scrape(query)
-    if google_results:
-        # Объединяем результаты
-        seen_names = {r["name"].lower() for r in results}
-        for r in google_results:
-            if r["name"].lower() not in seen_names:
-                results.append(r)
-                seen_names.add(r["name"].lower())
-        
-        if len(results) >= 2:
-            return results
-    
-    # Уровень 3: Парсинг CurseForge напрямую
-    curse_results = await search_mods_curseforge_scrape(query)
-    if curse_results:
-        seen_names = {r["name"].lower() for r in results}
-        for r in curse_results:
-            if r["name"].lower() not in seen_names:
-                results.append(r)
-                seen_names.add(r["name"].lower())
-    
-    # Уровень 4: DuckDuckGo
-    if len(results) < 2:
-        ddg_results = await search_mods_duckduckgo(query)
-        if ddg_results:
-            seen_names = {r["name"].lower() for r in results}
-            for r in ddg_results:
-                if r["name"].lower() not in seen_names:
-                    results.append(r)
-    
-    # Уровень 5: Прямая ссылка на поиск
-    if not results:
-        results.append({
-            "name": f"Поиск '{query}' на CurseForge",
-            "url": f"https://www.curseforge.com/minecraft/search?search={quote_plus(query)}&class=mods",
-            "summary": "открой ссылку чтобы посмотреть все моды по твоему запросу",
-            "downloads": 0,
-            "source": "CurseForge Search"
-        })
-        results.append({
-            "name": f"Поиск '{query}' на Modrinth",
-            "url": f"https://modrinth.com/mods?q={quote_plus(query)}",
-            "summary": "открой ссылку чтобы посмотреть все моды",
-            "downloads": 0,
-            "source": "Modrinth Search"
-        })
-    
-    return results[:5]
+    # 2. Fallback (Modrinth + ссылки на поиск)
+    print("⚠️ Google API не сработал, использую fallback")
+    context = await search_mods_fallback(query)
+    return context
 
 
-def format_mod_results(mods: List[dict], query: str) -> str:
-    """Форматирует результаты поиска модов для ответа Миры"""
-    if not mods:
-        return f"ой не нашла ничего по запросу '{query}' 😔 попробуй поискать сам на curseforge.com или modrinth.com"
+def format_mod_answer(ai_response: str, search_context: str) -> str:
+    """
+    Форматирует финальный ответ Миры о модах.
+    Добавляет ссылки после ответа AI.
+    """
+    # Извлекаем ссылки из контекста
+    links = re.findall(r'Ссылка: (https?://[^\s]+)', search_context)
     
-    # Если только ссылки на поиск
-    if all(m["name"].startswith("Поиск") for m in mods):
-        lines = [f"по запросу '{query}' вот что могу предложить:"]
-        for mod in mods:
-            lines.append(f"\n🔗 {mod['name']}\n   {mod['url']}")
-        return "\n".join(lines)
+    # Если AI уже дал ссылки — не дублируем
+    if links and not any(link in ai_response for link in links):
+        # Добавляем только если ответ короткий
+        if len(ai_response) < 300:
+            ai_response += "\n\nссылки:"
+            for link in links[:3]:
+                ai_response += f"\n• {link}"
     
-    # Нормальные результаты
-    lines = [f"вот что я нашла по запросу '{query}':"]
-    
-    for i, mod in enumerate(mods[:4], 1):
-        name = mod["name"]
-        url = mod["url"]
-        summary = mod.get("summary", "")
-        source = mod.get("source", "")
-        
-        if summary and len(summary) > 10:
-            if len(summary) > 120:
-                summary = summary[:120] + "..."
-            lines.append(f"\n{i}. {name} [{source}]\n   {summary}\n   {url}")
-        else:
-            lines.append(f"\n{i}. {name} [{source}]\n   {url}")
-    
-    if len(mods) > 4:
-        search_url = f"https://www.curseforge.com/minecraft/search?search={quote_plus(query)}&class=mods"
-        lines.append(f"\n...и ещё результаты, глянь тут: {search_url}")
-    
-    return "\n".join(lines)
+    return ai_response
