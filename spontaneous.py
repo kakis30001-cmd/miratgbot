@@ -49,4 +49,29 @@ class SpontaneousMessages:
             context = chat_memory.get_recent_context(30)
             
             if context:
-                # Используем AI для
+                # Используем AI для генерации уместного сообщения
+                ai_message = await mira_thinks(
+                    "напиши что-то в чат чтобы разрядить тишину, ты видишь что все молчат уже пару часов",
+                    "Мира",
+                    "mira_bot"
+                )
+                if ai_message:
+                    try:
+                        await bot.send_message(chat_id, ai_message)
+                    except Exception as e:
+                        print(f"❌ Ошибка отправки спонтанного: {e}")
+            else:
+                # Если нет контекста — используем заготовки
+                message = get_self_message()
+                try:
+                    await bot.send_message(chat_id, message)
+                except Exception as e:
+                    print(f"❌ Ошибка отправки: {e}")
+            
+            # Обновляем таймер
+            self.last_self_message = datetime.now()
+            self.next_message_time = self._calculate_next()
+            print(f"💬 Отправлено спонтанное сообщение, следующее в {self.next_message_time.strftime('%H:%M')}")
+
+# Глобальный экземпляр
+spontaneous = SpontaneousMessages()
