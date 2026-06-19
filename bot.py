@@ -212,14 +212,11 @@ async def handle_chat_message(message: Message):
         return
     
     # Проверка на запрос поиска мода
-    mod_query = _extract_mod_query(text)
+     mod_query = _extract_mod_query(text)
     if mod_query:
         await bot.send_chat_action(message.chat.id, action="typing")
-        mod_url = await mira_search_mod(mod_query)
-        if mod_url:
-            await message.reply(f"вот что я нашла: {mod_url}")
-        else:
-            await message.reply(f"не нашла мод по запросу '{mod_query}' попробуй поискать на curseforge")
+        mod_result = await mira_search_mod(mod_query)
+        await message.reply(mod_result)
         return
     
     # Отвечаем через AI
