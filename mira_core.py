@@ -10,7 +10,7 @@ from typing import Optional
 import config
 from memory import chat_memory
 from server_info import *
-from utils import get_server_online, search_mods, format_mod_results
+from utils import get_server_online, search_mods_for_ai, format_mod_answer
 
 # Стили общения Миры
 RESPONSE_STYLES = {
@@ -302,6 +302,73 @@ def get_self_message() -> str:
 
 
 async def mira_search_mod(query: str) -> str:
-    """Поиск модов с красивым форматированием"""
-    mods = await search_mods(query)
-    return format_mod_results(mods, query)
+    """
+    Поиск модов через Google API и AI.
+    Возвращает готовый ответ Миры.
+    """
+    # Получаем контекст из поиска
+    search_context = await search_mods_for_ai(query)
+    
+    if not search_context:
+        return f"ой не могу сейчас поискать моды по запросу '{query}' 😔 попробуй сам на curseforge.com или modrinth.com"
+    
+    # Формируем промпт для AI с результатами поиска
+    prompt = f"""ты - мира, помощница в чате майнкрафт сервера. к тебе обратились с просьбой найти мод.
+
+запрос игрока: "{query}"
+
+вот что удалось найти в интернете:
+
+{search_context}
+
+на основе этих данных ответь игроку. выбери самый подходящий мод из результатов, назови его точное название, кратко опиши что он делает, и дай ссылку. если в результатах несколько подходящих - расскажи про 2-3 лучших.
+
+отвечай в своём обычном стиле - с маленькой буквы, коротко, дружелюбно.
+
+ответь как мира:"""
+
+    # Отправляем в AI
+    headers = {
+        "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": config.BASE_URL,
+        "X-Title": "Mira LostEarth Bot"
+    }
+    
+    for model in config.AI_MODELS:
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 300,
+                    "temperature": 0.8,
+                }
+                
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        ai_response = data["choices"][0]["message"]["content"].strip()
+                        ai_response = re.sub(r'<[^>]+>', '', ai_response)
+                        
+                        # Добавляем ссылки если AI их не включил
+                        ai_response = format_mod_answer(ai_response, search_context)
+                        
+                        return ai_response
+        except Exception as e:
+            print(f"❌ Ошибка AI для поиска модов ({model}): {e}")
+            continue
+    
+    # Если AI не ответил — возвращаем просто ссылки
+    links = re.findall(r'Ссылка: (https?://[^\s]+)', search_context)
+    if links:
+        return f"вот что нашла по запросу '{query}':\n\n" + "\n".join(f"• {link}" for link in links[:3])
+    
+    return f"ой не получилось найти моды по запросу '{query}' 😔 попробуй сам на curseforge.com"
