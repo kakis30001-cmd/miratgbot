@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import re
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
@@ -16,8 +17,8 @@ from memory import chat_memory
 from server_info import *
 from utils import get_server_online
 from mira_core import (
-    mira_thinks, 
-    should_respond_to_message, 
+    mira_thinks,
+    should_respond_to_message,
     mira_search_mod,
     build_mira_prompt
 )
@@ -27,6 +28,7 @@ from spontaneous import spontaneous
 default = DefaultBotProperties(parse_mode="HTML")
 bot = Bot(token=config.BOT_TOKEN, default=default)
 dp = Dispatcher(storage=MemoryStorage())
+
 
 # ========== Клавиатуры ==========
 
@@ -39,6 +41,7 @@ def get_start_keyboard():
         [InlineKeyboardButton(text="📝 Заявка на мирный", url=config.BASE_URL + "/apply")],
     ])
 
+
 # ========== Обработчики команд ==========
 
 @dp.message(CommandStart())
@@ -46,11 +49,11 @@ async def cmd_start(message: Message):
     """Команда /start — работает только в ЛС"""
     if message.chat.type != "private":
         return
-    
+
     username = message.from_user.first_name or "игрок"
-    
+
     online, max_players = await get_server_online()
-    
+
     text = f"""приветик {username}! 💜
 
 я мира — помощница в чате сервера lostearth
@@ -66,7 +69,7 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 
 создал меня @ZOJlOTOY
 владелец сервера @pelmewki379"""
-    
+
     await message.answer(text, reply_markup=get_start_keyboard())
 
 
@@ -88,7 +91,7 @@ async def cmd_help(message: Message):
 /online - онлайн
 /donate - донат
 /rules - правила"""
-    
+
     await message.answer(text)
 
 
@@ -107,12 +110,12 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 async def cmd_online(message: Message):
     """Онлайн сервера"""
     online, max_players = await get_server_online()
-    
+
     if online > 0:
         text = f"сейчас на сервере {online} из {max_players} игроков 🎮"
     else:
         text = "сервер сейчас пустой заходи!"
-    
+
     await message.answer(text)
 
 
@@ -141,7 +144,7 @@ smp (скоро):
 
 покупать у @pelmewki379
 подробнее: {DONATE_URL}"""
-    
+
     await message.answer(text)
 
 
@@ -157,7 +160,7 @@ async def cmd_rules(message: Message):
 • нельзя рушить дома на спавне
 
 полные правила: {RULES_URL}"""
-    
+
     await message.answer(text)
 
 
@@ -170,8 +173,33 @@ async def cmd_apply(message: Message):
 подать можно тут: {APPLY_URL}
 
 после заявки жди ответа от администрации!"""
-    
+
     await message.answer(text)
+
+
+# ========== Вспомогательная функция ==========
+
+def _extract_mod_query(text: str) -> str:
+    """Извлекает запрос на поиск мода из сообщения"""
+    text_lower = text.lower()
+
+    patterns = [
+        r"найди мод (.+)",
+        r"какой мод (.+)",
+        r"есть мод (.+)",
+        r"мод (?:на|для) (.+)",
+        r"ресурспак (.+)",
+        r"посоветуй мод (.+)",
+        r"нужен мод (.+)",
+        r"порекомендуй мод (.+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            return match.group(1).strip()
+
+    return ""
 
 
 # ========== Обработчик сообщений в чате ==========
@@ -182,75 +210,67 @@ async def handle_chat_message(message: Message):
     Обработка всех сообщений.
     Мира отвечает если её упомянули или обратились к ней.
     """
-    
+
     # Игнорируем сообщения без текста
     if not message.text:
         return
-    
+
     # В ЛС не общаемся
     if message.chat.type == "private":
         return
-    
+
     username = message.from_user.first_name or message.from_user.username or "игрок"
     user_id = str(message.from_user.id)
     text = message.text
-    
+
     # Сохраняем ВСЕ сообщения в память чата
     await chat_memory.add_message(username, user_id, text)
-    
+
     # Проверяем, обращаются ли к Мире
     is_directed_at_mira = should_respond_to_message(text)
-    
+
     # Проверяем, ответ на сообщение Миры
     is_reply_to_mira = False
     if message.reply_to_message:
         if message.reply_to_message.from_user.id == bot.id:
             is_reply_to_mira = True
-    
+
     # Отвечаем только если обратились к Мире
     if not is_directed_at_mira and not is_reply_to_mira:
         return
-    
+
     # Проверка на запрос поиска мода
-     mod_query = _extract_mod_query(text)
+    mod_query = _extract_mod_query(text)
     if mod_query:
         await bot.send_chat_action(message.chat.id, action="typing")
         mod_result = await mira_search_mod(mod_query)
         await message.reply(mod_result)
         return
-    
+
     # Отвечаем через AI
     await bot.send_chat_action(message.chat.id, action="typing")
-    
+
     response = await mira_thinks(text, username, user_id)
-    
+
     if response:
         await message.reply(response)
 
 
-def _extract_mod_query(text: str) -> str:
-    """Извлекает запрос на поиск мода из сообщения"""
-    import re
-    
-    text_lower = text.lower()
-    
-    # Паттерны для поиска модов
-    patterns = [
-        r"найди мод (.+)",
-        r"какой мод (.+)",
-        r"есть мод (.+)",
-        r"мод (?:на|для) (.+)",
-        r"ресурспак (.+)",
-        r"посоветуй мод (.+)",
-        r"нужен мод (.+)",
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text_lower)
-        if match:
-            return match.group(1).strip()
-    
-    return None
+# ========== Callback для кнопок ==========
+
+@dp.callback_query(lambda c: c.data == "info_ip")
+async def callback_info_ip(callback: types.CallbackQuery):
+    """Кнопка IP сервера"""
+    online, max_players = await get_server_online()
+    text = f"""🌐 lostearth
+
+java: {JAVA_IP}
+bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
+версии: {VERSIONS}
+
+👥 онлайн: {online}/{max_players}"""
+    await callback.message.edit_text(text, reply_markup=get_start_keyboard())
+    await callback.answer()
 
 
 # ========== Периодические задачи ==========
@@ -258,10 +278,10 @@ def _extract_mod_query(text: str) -> str:
 async def spontaneous_loop():
     """Фоновый цикл для спонтанных сообщений"""
     print("💬 Цикл спонтанных сообщений запущен")
-    
+
     while True:
-        await asyncio.sleep(60)  # Проверяем каждую минуту
-        
+        await asyncio.sleep(60)
+
         try:
             await spontaneous.send_if_needed(bot, config.GROUP_CHAT_ID)
         except Exception as e:
@@ -281,16 +301,16 @@ async def main():
     print("=" * 50)
     print("💜 Мира — бот чата LostEarth")
     print("=" * 50)
-    
+
     # Подключаем память
     await chat_memory.connect()
-    
+
     # Запускаем фоновые задачи
     asyncio.create_task(spontaneous_loop())
     asyncio.create_task(memory_cleanup_loop())
-    
+
     print("✅ Мира запущена и слушает чат")
-    
+
     # Запускаем бота
     try:
         await dp.start_polling(bot)
@@ -299,6 +319,7 @@ async def main():
     finally:
         await chat_memory.close()
         await bot.session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
