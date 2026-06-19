@@ -181,18 +181,34 @@ async def cmd_apply(message: Message):
 
 def _extract_mod_query(text: str) -> str:
     """Извлекает запрос на поиск мода из сообщения"""
+    import re
     text_lower = text.lower()
-
+    
     patterns = [
         r"найди мод (.+)",
         r"какой мод (.+)",
         r"есть мод (.+)",
-        r"мод (?:на|для) (.+)",
+        r"мод (?:на|для|про) (.+)",
         r"ресурспак (.+)",
         r"посоветуй мод (.+)",
         r"нужен мод (.+)",
         r"порекомендуй мод (.+)",
+        r"дай мод (.+)",
+        r"моды? (?:на|для|про) (.+)",
+        r"найди (.+) мод",
+        r"посоветуй (.+) мод",
     ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            query = match.group(1).strip()
+            # Очищаем запрос от мусорных слов
+            query = re.sub(r'\b(мод|моды|мне|пожалуйста|плиз|плз)\b', '', query).strip()
+            if query:
+                return query
+    
+    return ""
 
     for pattern in patterns:
         match = re.search(pattern, text_lower)
