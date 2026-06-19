@@ -1,27 +1,29 @@
 """
-Утилиты для Миры: проверка онлайна, поиск модов, etc.
+Утилиты для Миры: проверка онлайна, поиск модов.
 """
 
 import asyncio
 import aiohttp
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from mcstatus import JavaServer
 import config
 from memory import chat_memory
+
+# Кэш онлайна
+_online_cache = {"online": 0, "max": 0, "updated": None}
 
 async def get_server_online() -> Tuple[int, int]:
     """
     Получение онлайна сервера Minecraft.
     Возвращает (online, max_players).
-    Использует кэш на 60 секунд.
+    Кэш на 60 секунд.
     """
     now = datetime.now()
     
-    # Используем кэш если он свежий
-    if chat_memory.online_updated:
-        if (now - chat_memory.online_updated).total_seconds() < 60:
-            return chat_memory.online_cache["online"], chat_memory.online_cache["max"]
+    if _online_cache["updated"]:
+        if (now - _online_cache["updated"]).total_seconds() < 60:
+            return _online_cache["online"], _online_cache["max"]
     
     try:
         server = JavaServer(
@@ -30,50 +32,40 @@ async def get_server_online() -> Tuple[int, int]:
         )
         status = await server.async_status()
         
-        online = status.players.online
-        max_players = status.players.max
+        _online_cache["online"] = status.players.online
+        _online_cache["max"] = status.players.max
+        _online_cache["updated"] = now
         
-        chat_memory.online_cache = {"online": online, "max": max_players}
-        chat_memory.online_updated = now
-        
-        return online, max_players
+        return status.players.online, status.players.max
         
     except Exception as e:
         print(f"❌ Ошибка получения онлайна: {e}")
-        # Возвращаем последний известный онлайн или нули
+        # Если ошибка — возвращаем последний кэш или 0
         return (
-            chat_memory.online_cache.get("online", 0),
-            chat_memory.online_cache.get("max", 0)
+            _online_cache["online"] if _online_cache["updated"] else 0,
+            _online_cache["max"] if _online_cache["updated"] else 0
         )
 
-async def search_mod(query: str) -> Optional[str]:
-    """
-    Поиск мода/ресурспака через CurseForge API или Google.
-    Возвращает ссылку или None.
-    """
-    # Пробуем поискать через CurseForge
-    try:
-        async with aiohttp.ClientSession() as session:
-            search_url = f"https://api.curseforge.com/v1/mods/search?gameId=432&searchFilter={query}"
-            async with session.get(search_url, timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("data"):
-                        mod = data["data"][0]
-                        return f"https://www.curseforge.com/minecraft/mc-mods/{mod['slug']}"
-    except Exception as e:
-        print(f"⚠️ Ошибка поиска мода: {e}")
-    
-    # Fallback: ссылка на поиск CurseForge
-    query_encoded = query.replace(" ", "+")
-    return f"https://www.curseforge.com/minecraft/search?search={query_encoded}"
 
-async def get_mod_suggestions(query: str) -> list:
-    """Поиск нескольких модов по запросу"""
+async def search_mods_curseforge(query: str) -> List[dict]:
+    """
+    Поиск модов через CurseForge API.
+    Возвращает список словарей с названием, ссылкой и описанием.
+    """
     try:
         async with aiohttp.ClientSession() as session:
-            search_url = f"https://api.curseforge.com/v1/mods/search?gameId=432&searchFilter={query}&pageSize=3"
-            async with session.get(search_url, timeout=10) as resp:
+            # CurseForge API v1
+            url = "https://api.curseforge.com/v1/mods/search"
+            params = {
+                "gameId": 432,  # Minecraft
+                "searchFilter": query,
+                "sortField": 2,  # По популярности
+                "sortOrder": "desc",
+                "pageSize": 5,
+                "classId": 6,  # Только моды, не ресурспаки
+            }
+            
+            async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     results = []
@@ -81,12 +73,87 @@ async def get_mod_suggestions(query: str) -> list:
                         results.append({
                             "name": mod["name"],
                             "url": f"https://www.curseforge.com/minecraft/mc-mods/{mod['slug']}",
-                            "summary": mod.get("summary", "")
+                            "summary": mod.get("summary", "")[:150],
+                            "downloads": mod.get("downloadCount", 0)
                         })
                     return results
-    except:
-        pass
+                else:
+                    print(f"❌ CurseForge API ошибка: {resp.status}")
+    except Exception as e:
+        print(f"❌ Ошибка поиска модов: {e}")
+    
     return []
 
-# Кэш для онлайна на 1 минуту
-_online_cache = {"online": 0, "max": 0, "updated": None}
+
+async def search_mods_modrinth(query: str) -> List[dict]:
+    """
+    Поиск модов через Modrinth API (бесплатный, без ключа).
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "https://api.modrinth.com/v2/search"
+            params = {
+                "query": query,
+                "limit": 5,
+                "facets": '[["project_type:mod"]]',
+            }
+            
+            async with session.get(url, params=params, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    results = []
+                    for hit in data.get("hits", []):
+                        results.append({
+                            "name": hit["title"],
+                            "url": f"https://modrinth.com/mod/{hit['slug']}",
+                            "summary": hit.get("description", "")[:150],
+                            "downloads": hit.get("downloads", 0)
+                        })
+                    return results
+    except Exception as e:
+        print(f"❌ Ошибка Modrinth: {e}")
+    
+    return []
+
+
+async def search_mods(query: str) -> List[dict]:
+    """
+    Поиск модов: сначала Modrinth, потом CurseForge.
+    Возвращает список модов.
+    """
+    # Пробуем Modrinth (не требует API ключа)
+    results = await search_mods_modrinth(query)
+    if results:
+        return results
+    
+    # Fallback: CurseForge
+    results = await search_mods_curseforge(query)
+    if results:
+        return results
+    
+    return []
+
+
+def format_mod_results(mods: List[dict], query: str) -> str:
+    """Форматирует результаты поиска модов для ответа Миры"""
+    if not mods:
+        return f"ничего не нашла по запросу '{query}' попробуй поискать на curseforge сам"
+    
+    lines = [f"вот что я нашла по запросу '{query}':"]
+    
+    for i, mod in enumerate(mods[:3], 1):
+        name = mod["name"]
+        url = mod["url"]
+        summary = mod.get("summary", "")
+        if summary and len(summary) > 100:
+            summary = summary[:100] + "..."
+        
+        if summary:
+            lines.append(f"\n{i}. {name} - {summary}\n{url}")
+        else:
+            lines.append(f"\n{i}. {name}\n{url}")
+    
+    if len(mods) > 3:
+        lines.append(f"\nи ещё {len(mods) - 3} модов... уточни запрос если надо")
+    
+    return "\n".join(lines)
