@@ -1,14 +1,15 @@
 """
-Основной файл бота Миры.
+Основной файл бота Энди.
 Обработчики команд и сообщений.
 """
 
 import asyncio
 import re
+import random
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 
@@ -16,11 +17,11 @@ import config
 from memory import chat_memory
 from server_info import *
 from utils import get_server_online
-from mira_core import (
-    mira_thinks,
+from enderia_core import (
+    enderia_thinks,
     should_respond_to_message,
-    mira_search_mod,
-    build_mira_prompt
+    enderia_search_mod,
+    build_enderia_prompt
 )
 from spontaneous import spontaneous
 
@@ -42,6 +43,42 @@ def get_start_keyboard():
     ])
 
 
+# ========== РЕАКЦИИ ==========
+
+async def react_to_message(message: Message):
+    """
+    Энди ставит реакцию на сообщение если там есть ключевые слова.
+    """
+    if not message.text:
+        return
+    
+    # Не реагируем на свои сообщения
+    if message.from_user.id == bot.id:
+        return
+    
+    text_lower = message.text.lower()
+    
+    # Проверяем ключевые слова
+    for keyword, emoji in config.ENDERIA_REACTIONS.items():
+        if keyword in text_lower:
+            try:
+                # Если сообщение адресовано Энди — тоже ставим реакцию
+                await message.react([ReactionTypeEmoji(emoji=emoji)])
+                print(f"💜 Энди поставила {emoji} на '{text_lower[:40]}...'")
+                return
+            except Exception as e:
+                print(f"❌ Ошибка реакции: {e}")
+                return
+    
+    # Случайная реакция с шансом 3%
+    if random.random() < 0.03:
+        random_emoji = random.choice(["💜", "✨", "🌿", "💎", "🏠", "😊", "🎮", "⛏️"])
+        try:
+            await message.react([ReactionTypeEmoji(emoji=random_emoji)])
+        except Exception as e:
+            print(f"❌ Ошибка случайной реакции: {e}")
+
+
 # ========== Обработчики команд ==========
 
 @dp.message(CommandStart())
@@ -51,12 +88,11 @@ async def cmd_start(message: Message):
         return
 
     username = message.from_user.first_name or "игрок"
-
     online, max_players = await get_server_online()
 
     text = f"""приветик {username}! 💜
 
-я мира — помощница в чате сервера lostearth
+я энди — помощница в чате сервера lostearth
 
 🎮 ip сервера:
 java: {JAVA_IP}
@@ -75,7 +111,6 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
-    """Помощь по боту"""
     text = """чем я могу помочь:
 
 • рассказать о сервере и донатах
@@ -97,7 +132,6 @@ async def cmd_help(message: Message):
 
 @dp.message(Command("ip"))
 async def cmd_ip(message: Message):
-    """IP сервера"""
     text = f"""🌐 lostearth
 
 java: {JAVA_IP}
@@ -108,20 +142,16 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 
 @dp.message(Command("online"))
 async def cmd_online(message: Message):
-    """Онлайн сервера"""
     online, max_players = await get_server_online()
-
     if online > 0:
         text = f"сейчас на сервере {online} из {max_players} игроков 🎮"
     else:
         text = "сервер сейчас пустой заходи!"
-
     await message.answer(text)
 
 
 @dp.message(Command("donate"))
 async def cmd_donate(message: Message):
-    """Информация о донате"""
     text = f"""💎 донат lostearth
 
 все деньги идут на хостинг!
@@ -150,7 +180,6 @@ smp (скоро):
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
-    """Правила сервера"""
     text = f"""📜 правила lostearth:
 
 • запрещены читы x-ray freecam - бан
@@ -160,20 +189,17 @@ async def cmd_rules(message: Message):
 • нельзя рушить дома на спавне
 
 полные правила: {RULES_URL}"""
-
     await message.answer(text)
 
 
 @dp.message(Command("apply"))
 async def cmd_apply(message: Message):
-    """Заявка на мирный режим"""
     text = f"""📝 заявка на мирный режим
 
 чтобы попасть на мирный режим нужна заявка
 подать можно тут: {APPLY_URL}
 
 после заявки жди ответа от администрации!"""
-
     await message.answer(text)
 
 
@@ -181,9 +207,7 @@ async def cmd_apply(message: Message):
 
 def _extract_mod_query(text: str) -> str:
     """Извлекает запрос на поиск мода из сообщения"""
-    import re
     text_lower = text.lower()
-    
     patterns = [
         r"найди мод (.+)",
         r"какой мод (.+)",
@@ -198,23 +222,13 @@ def _extract_mod_query(text: str) -> str:
         r"найди (.+) мод",
         r"посоветуй (.+) мод",
     ]
-    
     for pattern in patterns:
         match = re.search(pattern, text_lower)
         if match:
             query = match.group(1).strip()
-            # Очищаем запрос от мусорных слов
             query = re.sub(r'\b(мод|моды|мне|пожалуйста|плиз|плз)\b', '', query).strip()
             if query:
                 return query
-    
-    return ""
-
-    for pattern in patterns:
-        match = re.search(pattern, text_lower)
-        if match:
-            return match.group(1).strip()
-
     return ""
 
 
@@ -222,16 +236,11 @@ def _extract_mod_query(text: str) -> str:
 
 @dp.message()
 async def handle_chat_message(message: Message):
-    """
-    Обработка всех сообщений.
-    Мира отвечает если её упомянули или обратились к ней.
-    """
+    """Обработка всех сообщений."""
 
-    # Игнорируем сообщения без текста
     if not message.text:
         return
 
-    # В ЛС не общаемся
     if message.chat.type == "private":
         return
 
@@ -242,31 +251,32 @@ async def handle_chat_message(message: Message):
     # Сохраняем ВСЕ сообщения в память чата
     await chat_memory.add_message(username, user_id, text)
 
-    # Проверяем, обращаются ли к Мире
-    is_directed_at_mira = should_respond_to_message(text)
+    # 🔥 ЭНДИ СТАВИТ РЕАКЦИИ
+    await react_to_message(message)
 
-    # Проверяем, ответ на сообщение Миры
-    is_reply_to_mira = False
+    # Проверяем, обращаются ли к Энди
+    is_directed = should_respond_to_message(text)
+
+    # Проверяем, ответ на сообщение Энди
+    is_reply_to_enderia = False
     if message.reply_to_message:
         if message.reply_to_message.from_user.id == bot.id:
-            is_reply_to_mira = True
+            is_reply_to_enderia = True
 
-    # Отвечаем только если обратились к Мире
-    if not is_directed_at_mira and not is_reply_to_mira:
+    if not is_directed and not is_reply_to_enderia:
         return
 
     # Проверка на запрос поиска мода
     mod_query = _extract_mod_query(text)
     if mod_query:
         await bot.send_chat_action(message.chat.id, action="typing")
-        mod_result = await mira_search_mod(mod_query)
+        mod_result = await enderia_search_mod(mod_query)
         await message.reply(mod_result)
         return
 
     # Отвечаем через AI
     await bot.send_chat_action(message.chat.id, action="typing")
-
-    response = await mira_thinks(text, username, user_id)
+    response = await enderia_thinks(text, username, user_id)
 
     if response:
         await message.reply(response)
@@ -276,7 +286,6 @@ async def handle_chat_message(message: Message):
 
 @dp.callback_query(lambda c: c.data == "info_ip")
 async def callback_info_ip(callback: types.CallbackQuery):
-    """Кнопка IP сервера"""
     online, max_players = await get_server_online()
     text = f"""🌐 lostearth
 
@@ -292,12 +301,9 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 # ========== Периодические задачи ==========
 
 async def spontaneous_loop():
-    """Фоновый цикл для спонтанных сообщений"""
     print("💬 Цикл спонтанных сообщений запущен")
-
     while True:
         await asyncio.sleep(60)
-
         try:
             await spontaneous.send_if_needed(bot, config.GROUP_CHAT_ID)
         except Exception as e:
@@ -305,7 +311,6 @@ async def spontaneous_loop():
 
 
 async def memory_cleanup_loop():
-    """Очистка старых сообщений раз в час"""
     while True:
         await asyncio.sleep(3600)
         await chat_memory.cleanup_old_messages()
@@ -315,19 +320,16 @@ async def memory_cleanup_loop():
 
 async def main():
     print("=" * 50)
-    print("💜 Мира — бот чата LostEarth")
+    print("💜 Энди — бот чата LostEarth")
     print("=" * 50)
 
-    # Подключаем память
     await chat_memory.connect()
 
-    # Запускаем фоновые задачи
     asyncio.create_task(spontaneous_loop())
     asyncio.create_task(memory_cleanup_loop())
 
-    print("✅ Мира запущена и слушает чат")
+    print("✅ Энди запущена и слушает чат")
 
-    # Запускаем бота
     try:
         await dp.start_polling(bot)
     except Exception as e:
