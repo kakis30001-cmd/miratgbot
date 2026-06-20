@@ -6,7 +6,6 @@
 import asyncio
 import re
 import random
-from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji
@@ -21,7 +20,6 @@ from enderia_core import (
     enderia_thinks,
     should_respond_to_message,
     enderia_search_mod,
-    build_enderia_prompt
 )
 from spontaneous import spontaneous
 
@@ -31,10 +29,7 @@ bot = Bot(token=config.BOT_TOKEN, default=default)
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# ========== Клавиатуры ==========
-
 def get_start_keyboard():
-    """Клавиатура для /start (в ЛС)"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌐 IP сервера", callback_data="info_ip")],
         [InlineKeyboardButton(text="📜 Правила", url=config.BASE_URL + "/rules")],
@@ -46,44 +41,36 @@ def get_start_keyboard():
 # ========== РЕАКЦИИ ==========
 
 async def react_to_message(message: Message):
-    """
-    Энди ставит реакцию на сообщение если там есть ключевые слова.
-    """
+    """Энди ставит реакцию на сообщения с ключевыми словами."""
     if not message.text:
         return
-    
-    # Не реагируем на свои сообщения
     if message.from_user.id == bot.id:
         return
     
     text_lower = message.text.lower()
     
-    # Проверяем ключевые слова
     for keyword, emoji in config.ENDERIA_REACTIONS.items():
         if keyword in text_lower:
             try:
-                # Если сообщение адресовано Энди — тоже ставим реакцию
                 await message.react([ReactionTypeEmoji(emoji=emoji)])
-                print(f"💜 Энди поставила {emoji} на '{text_lower[:40]}...'")
                 return
             except Exception as e:
                 print(f"❌ Ошибка реакции: {e}")
                 return
     
-    # Случайная реакция с шансом 3%
+    # Случайная реакция 3%
     if random.random() < 0.03:
-        random_emoji = random.choice(["💜", "✨", "🌿", "💎", "🏠", "😊", "🎮", "⛏️"])
+        random_emoji = random.choice(["💜", "✨", "🌿", "💎", "⛏️"])
         try:
             await message.react([ReactionTypeEmoji(emoji=random_emoji)])
         except Exception as e:
             print(f"❌ Ошибка случайной реакции: {e}")
 
 
-# ========== Обработчики команд ==========
+# ========== КОМАНДЫ ==========
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    """Команда /start — работает только в ЛС"""
     if message.chat.type != "private":
         return
 
@@ -101,7 +88,7 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 
 👥 онлайн: {online}/{max_players}
 
-я общаюсь в чате сервера, а тут могу только показать инфу. заходи в чат поболтать!
+я общаюсь в чате сервера, а тут могу только показать инфу
 
 создал меня @ZOJlOTOY
 владелец сервера @pelmewki379"""
@@ -118,15 +105,8 @@ async def cmd_help(message: Message):
 • помочь с майнкрафтом
 • просто поболтать
 
-просто напиши мне в чате, я услышу 😊
-
 команды:
-/start - главная информация
-/ip - адреса сервера
-/online - онлайн
-/donate - донат
-/rules - правила"""
-
+/start /ip /online /donate /rules"""
     await message.answer(text)
 
 
@@ -158,23 +138,13 @@ async def cmd_donate(message: Message):
 каждый донат включает предыдущие
 
 мирный режим:
-• друид - 25грн/50руб
-• оракул - 50грн/100руб
-• монарх - 100грн/200руб
-• херувим - 150грн/300руб
-• архонт - 200грн/400руб
-• серафим - 300грн/600руб
+друид 25грн/50руб → оракул 50грн/100руб → монарх 100грн/200руб → херувим 150грн/300руб → архонт 200грн/400руб → серафим 300грн/600руб
 
 smp (скоро):
-• путник - 50грн/100руб
-• stranik - 100грн/200руб
-• darkness - 150грн/300руб
-• angel - 200грн/400руб
-• archangel - 300грн/600руб
+путник → stranik → darkness → angel → archangel
 
 покупать у @pelmewki379
 подробнее: {DONATE_URL}"""
-
     await message.answer(text)
 
 
@@ -186,7 +156,6 @@ async def cmd_rules(message: Message):
 • запрещена реклама серверов - бан по ip
 • гриф и кража на спавне - бан
 • оскорбления модерации - мут
-• нельзя рушить дома на спавне
 
 полные правила: {RULES_URL}"""
     await message.answer(text)
@@ -196,17 +165,14 @@ async def cmd_rules(message: Message):
 async def cmd_apply(message: Message):
     text = f"""📝 заявка на мирный режим
 
-чтобы попасть на мирный режим нужна заявка
 подать можно тут: {APPLY_URL}
-
 после заявки жди ответа от администрации!"""
     await message.answer(text)
 
 
-# ========== Вспомогательная функция ==========
+# ========== ПОИСК МОДОВ ==========
 
 def _extract_mod_query(text: str) -> str:
-    """Извлекает запрос на поиск мода из сообщения"""
     text_lower = text.lower()
     patterns = [
         r"найди мод (.+)",
@@ -219,8 +185,6 @@ def _extract_mod_query(text: str) -> str:
         r"порекомендуй мод (.+)",
         r"дай мод (.+)",
         r"моды? (?:на|для|про) (.+)",
-        r"найди (.+) мод",
-        r"посоветуй (.+) мод",
     ]
     for pattern in patterns:
         match = re.search(pattern, text_lower)
@@ -232,15 +196,12 @@ def _extract_mod_query(text: str) -> str:
     return ""
 
 
-# ========== Обработчик сообщений в чате ==========
+# ========== ОБРАБОТЧИК СООБЩЕНИЙ ==========
 
 @dp.message()
 async def handle_chat_message(message: Message):
-    """Обработка всех сообщений."""
-
     if not message.text:
         return
-
     if message.chat.type == "private":
         return
 
@@ -248,41 +209,33 @@ async def handle_chat_message(message: Message):
     user_id = str(message.from_user.id)
     text = message.text
 
-    # Сохраняем ВСЕ сообщения в память чата
+    # Сохраняем в память
     await chat_memory.add_message(username, user_id, text)
 
-    # 🔥 ЭНДИ СТАВИТ РЕАКЦИИ
+    # Реакции
     await react_to_message(message)
 
-    # Проверяем, обращаются ли к Энди
+    # Проверяем обращение к Энди
     is_directed = should_respond_to_message(text)
+    is_reply = bool(message.reply_to_message and message.reply_to_message.from_user.id == bot.id)
 
-    # Проверяем, ответ на сообщение Энди
-    is_reply_to_enderia = False
-    if message.reply_to_message:
-        if message.reply_to_message.from_user.id == bot.id:
-            is_reply_to_enderia = True
-
-    if not is_directed and not is_reply_to_enderia:
+    if not is_directed and not is_reply:
         return
 
-    # Проверка на запрос поиска мода
+    # Поиск мода
     mod_query = _extract_mod_query(text)
     if mod_query:
         await bot.send_chat_action(message.chat.id, action="typing")
-        mod_result = await enderia_search_mod(mod_query)
-        await message.reply(mod_result)
+        result = await enderia_search_mod(mod_query)
+        await message.reply(result)
         return
 
-    # Отвечаем через AI
+    # Ответ через AI
     await bot.send_chat_action(message.chat.id, action="typing")
     response = await enderia_thinks(text, username, user_id)
-
     if response:
         await message.reply(response)
 
-
-# ========== Callback для кнопок ==========
 
 @dp.callback_query(lambda c: c.data == "info_ip")
 async def callback_info_ip(callback: types.CallbackQuery):
@@ -298,7 +251,7 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
     await callback.answer()
 
 
-# ========== Периодические задачи ==========
+# ========== ФОНОВЫЕ ЗАДАЧИ ==========
 
 async def spontaneous_loop():
     print("💬 Цикл спонтанных сообщений запущен")
@@ -307,7 +260,7 @@ async def spontaneous_loop():
         try:
             await spontaneous.send_if_needed(bot, config.GROUP_CHAT_ID)
         except Exception as e:
-            print(f"❌ Ошибка спонтанного цикла: {e}")
+            print(f"❌ Ошибка спонтанного: {e}")
 
 
 async def memory_cleanup_loop():
@@ -316,7 +269,7 @@ async def memory_cleanup_loop():
         await chat_memory.cleanup_old_messages()
 
 
-# ========== Запуск ==========
+# ========== ЗАПУСК ==========
 
 async def main():
     print("=" * 50)
