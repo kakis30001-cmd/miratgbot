@@ -1,5 +1,5 @@
 """
-Утилиты для Миры: проверка онлайна, поиск модов через Google API.
+Утилиты для Энди: проверка онлайна, поиск модов через Google API.
 """
 
 import asyncio
@@ -87,15 +87,13 @@ async def search_mods_google_api(query: str) -> str:
                         snippet = item.get("snippet", "").strip()
                         link = item.get("link", "").strip()
                         
-                        # Чистим HTML сущности
+                        # Чистим
                         title = re.sub(r'&amp;', '&', title)
                         title = re.sub(r'&#x27;', "'", title)
                         title = re.sub(r'&quot;', '"', title)
+                        title = re.sub(r'\s*[-–|]\s*(CurseForge|Modrinth).*$', '', title)
                         snippet = re.sub(r'&amp;', '&', snippet)
                         snippet = re.sub(r'&#x27;', "'", snippet)
-                        
-                        # Убираем лишнее из заголовка
-                        title = re.sub(r'\s*[-–|]\s*(CurseForge|Modrinth).*$', '', title)
                         
                         context_lines.append(f"Результат {i}:")
                         context_lines.append(f"Название: {title}")
@@ -113,7 +111,7 @@ async def search_mods_google_api(query: str) -> str:
                 elif resp.status == 429:
                     print("❌ Google API: превышен лимит (429)")
                 elif resp.status == 403:
-                    print("❌ Google API: доступ запрещён (403) - проверь ключ и CX")
+                    print("❌ Google API: доступ запрещён (403)")
                 else:
                     error_text = await resp.text()
                     print(f"❌ Google API ошибка ({resp.status}): {error_text[:200]}")
@@ -123,14 +121,15 @@ async def search_mods_google_api(query: str) -> str:
     
     return ""
 
+
 async def search_mods_fallback(query: str) -> str:
     """
-    Запасной поиск если Google API недоступен.
-    Ищет через Modrinth API + DuckDuckGo.
+    Запасной поиск через Modrinth API.
+    Не отдаёт ссылки на поиск если нашлись реальные моды.
     """
     context_lines = []
     
-    # 1. Пробуем Modrinth API
+    # 1. Modrinth API
     try:
         async with aiohttp.ClientSession() as session:
             url = "https://api.modrinth.com/v2/search"
@@ -140,35 +139,37 @@ async def search_mods_fallback(query: str) -> str:
                 "facets": '[["project_type:mod"]]',
             }
             headers = {
-                "User-Agent": "MiraBot/1.0 (LostEarth Minecraft Server)"
+                "User-Agent": "EnderiaBot/1.0 (LostEarth Minecraft Server)"
             }
             
             async with session.get(url, params=params, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    for i, hit in enumerate(data.get("hits", [])[:3], 1):
-                        title = hit.get("title", "")
-                        desc = hit.get("description", "")[:200]
-                        slug = hit.get("slug", "")
-                        context_lines.append(f"Результат {i} (Modrinth):")
-                        context_lines.append(f"Название: {title}")
-                        if desc:
-                            context_lines.append(f"Описание: {desc}")
-                        context_lines.append(f"Ссылка: https://modrinth.com/mod/{slug}")
-                        context_lines.append("")
+                    hits = data.get("hits", [])
+                    if hits:
+                        for i, hit in enumerate(hits[:3], 1):
+                            title = hit.get("title", "")
+                            desc = hit.get("description", "")[:200]
+                            slug = hit.get("slug", "")
+                            context_lines.append(f"Результат {i} (Modrinth):")
+                            context_lines.append(f"Название: {title}")
+                            if desc:
+                                context_lines.append(f"Описание: {desc}")
+                            context_lines.append(f"Ссылка: https://modrinth.com/mod/{slug}")
+                            context_lines.append("")
     except Exception as e:
         print(f"⚠️ Modrinth fallback: {e}")
     
-    # 2. Если Modrinth не дал результатов — даём ссылки на поиск
+    # 2. Только если ничего не нашли — ссылки на поиск
     if not context_lines:
         from urllib.parse import quote_plus
         encoded = quote_plus(query)
-        context_lines.append("Результат 1 (CurseForge поиск):")
-        context_lines.append(f"Название: Поиск модов '{query}' на CurseForge")
+        context_lines.append("Результат 1:")
+        context_lines.append(f"Название: Поиск '{query}' на CurseForge")
         context_lines.append(f"Ссылка: https://www.curseforge.com/minecraft/search?search={encoded}&class=mods")
         context_lines.append("")
-        context_lines.append("Результат 2 (Modrinth поиск):")
-        context_lines.append(f"Название: Поиск модов '{query}' на Modrinth")
+        context_lines.append("Результат 2:")
+        context_lines.append(f"Название: Поиск '{query}' на Modrinth")
         context_lines.append(f"Ссылка: https://modrinth.com/mods?q={encoded}")
         context_lines.append("")
     
@@ -178,16 +179,12 @@ async def search_mods_fallback(query: str) -> str:
 async def search_mods_for_ai(query: str) -> str:
     """
     Основная функция поиска модов.
-    Возвращает контекст для передачи AI.
     Сначала Google API, потом fallback.
     """
-    
-    # 1. Google Custom Search
     context = await search_mods_google_api(query)
     if context:
         return context
     
-    # 2. Fallback (Modrinth + ссылки на поиск)
     print("⚠️ Google API не сработал, использую fallback")
     context = await search_mods_fallback(query)
     return context
@@ -195,18 +192,21 @@ async def search_mods_for_ai(query: str) -> str:
 
 def format_mod_answer(ai_response: str, search_context: str) -> str:
     """
-    Форматирует финальный ответ Миры о модах.
-    Добавляет ссылки после ответа AI.
+    Добавляет ссылки только если AI их не дал.
+    Не дублирует.
     """
-    # Извлекаем ссылки из контекста
     links = re.findall(r'Ссылка: (https?://[^\s]+)', search_context)
+    existing_links = re.findall(r'https?://[^\s]+', ai_response)
     
-    # Если AI уже дал ссылки — не дублируем
-    if links and not any(link in ai_response for link in links):
-        # Добавляем только если ответ короткий
-        if len(ai_response) < 300:
-            ai_response += "\n\nссылки:"
-            for link in links[:3]:
-                ai_response += f"\n• {link}"
+    # Если AI уже дал ссылки — не трогаем
+    if existing_links:
+        return ai_response
+    
+    # Добавляем одну нормальную ссылку (не поиск)
+    if links:
+        for link in links:
+            if "/search?" not in link:
+                ai_response += f"\n{link}"
+                break
     
     return ai_response
