@@ -60,7 +60,7 @@ async def search_mods_google_api(query: str) -> str:
         return ""
     
     try:
-        search_query = f"minecraft mod {query}"
+        search_query = f"minecraft mod {query} site:curseforge.com OR site:modrinth.com"
         
         async with aiohttp.ClientSession() as session:
             url = "https://www.googleapis.com/customsearch/v1"
@@ -69,7 +69,6 @@ async def search_mods_google_api(query: str) -> str:
                 "cx": config.GOOGLE_SEARCH_CX,
                 "q": search_query,
                 "num": 5,
-                "lr": "lang_ru|lang_en",
                 "safe": "off",
             }
             
@@ -88,11 +87,15 @@ async def search_mods_google_api(query: str) -> str:
                         snippet = item.get("snippet", "").strip()
                         link = item.get("link", "").strip()
                         
-                        # Чистим
+                        # Чистим HTML сущности
                         title = re.sub(r'&amp;', '&', title)
                         title = re.sub(r'&#x27;', "'", title)
+                        title = re.sub(r'&quot;', '"', title)
                         snippet = re.sub(r'&amp;', '&', snippet)
                         snippet = re.sub(r'&#x27;', "'", snippet)
+                        
+                        # Убираем лишнее из заголовка
+                        title = re.sub(r'\s*[-–|]\s*(CurseForge|Modrinth).*$', '', title)
                         
                         context_lines.append(f"Результат {i}:")
                         context_lines.append(f"Название: {title}")
@@ -110,7 +113,7 @@ async def search_mods_google_api(query: str) -> str:
                 elif resp.status == 429:
                     print("❌ Google API: превышен лимит (429)")
                 elif resp.status == 403:
-                    print("❌ Google API: доступ запрещён (403)")
+                    print("❌ Google API: доступ запрещён (403) - проверь ключ и CX")
                 else:
                     error_text = await resp.text()
                     print(f"❌ Google API ошибка ({resp.status}): {error_text[:200]}")
@@ -119,7 +122,6 @@ async def search_mods_google_api(query: str) -> str:
         print(f"❌ Ошибка Google API: {e}")
     
     return ""
-
 
 async def search_mods_fallback(query: str) -> str:
     """
