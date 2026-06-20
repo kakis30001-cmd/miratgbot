@@ -20,12 +20,13 @@ CREATOR = "@ZOJlOTOY"
 OWNER = "@pelmewki379"
 OWNER_TG = "pelmewki379"
 
-# AI модели (основная + запасные)
+# AI модели (основная + запасные) — РАБОЧИЕ на 20.06.2025
 AI_MODELS = [
-    "google/gemini-2.0-flash",
-    "google/gemini-2.0-flash-exp",
-    "meta-llama/llama-3.3-70b-instruct",
-    "deepseek/deepseek-chat",
+    "google/gemini-2.5-flash",           # Gemini 2.5 Flash (новейшая)
+    "google/gemini-2.0-flash-001",       # Gemini 2.0 Flash
+    "meta-llama/llama-3.3-70b-instruct", # Llama 3.3
+    "deepseek/deepseek-chat",            # DeepSeek V3
+    "qwen/qwen-2.5-72b-instruct",        # Qwen запасной
 ]
 
 # Интервал спонтанных сообщений (в секундах)
