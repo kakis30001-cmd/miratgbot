@@ -1,6 +1,6 @@
 """
 Точка входа для Railway.
-Запускает Flask (веб) и бота одновременно.
+Запускает Flask (веб) и бота Энди одновременно.
 """
 
 import asyncio
@@ -43,5 +43,5 @@ if __name__ == "__main__":
     flask_thread.start()
     print(f"🌐 Веб запущен на порту {os.environ.get('PORT', 8080)}")
     
-    # Бот в главном потоке
+    # Бот Энди в главном потоке
     asyncio.run(bot_main())
