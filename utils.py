@@ -60,7 +60,6 @@ async def search_mods_google_api(query: str) -> str:
         return ""
     
     try:
-        # Формируем поисковый запрос — ищем только на сайтах модов
         search_query = f"minecraft mod {query}"
         
         async with aiohttp.ClientSession() as session:
@@ -83,14 +82,13 @@ async def search_mods_google_api(query: str) -> str:
                         print("❌ Google API: ничего не найдено")
                         return ""
                     
-                    # Собираем контекст для AI
                     context_lines = []
                     for i, item in enumerate(items[:5], 1):
                         title = item.get("title", "").strip()
                         snippet = item.get("snippet", "").strip()
                         link = item.get("link", "").strip()
                         
-                        # Чистим HTML сущности
+                        # Чистим
                         title = re.sub(r'&amp;', '&', title)
                         title = re.sub(r'&#x27;', "'", title)
                         snippet = re.sub(r'&amp;', '&', snippet)
@@ -110,9 +108,9 @@ async def search_mods_google_api(query: str) -> str:
                     return context
                     
                 elif resp.status == 429:
-                    print("❌ Google API: превышен лимит запросов (429)")
+                    print("❌ Google API: превышен лимит (429)")
                 elif resp.status == 403:
-                    print("❌ Google API: доступ запрещён (403) - проверь ключ и CX")
+                    print("❌ Google API: доступ запрещён (403)")
                 else:
                     error_text = await resp.text()
                     print(f"❌ Google API ошибка ({resp.status}): {error_text[:200]}")
