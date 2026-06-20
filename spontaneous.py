@@ -1,5 +1,5 @@
 """
-Спонтанные сообщения Миры.
+Спонтанные сообщения Энди.
 Она может писать в чат сама раз в 4-8 часов, если там тихо.
 """
 
@@ -7,7 +7,7 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 from memory import chat_memory
-from mira_core import get_self_message, mira_thinks
+from enderia_core import get_self_message, enderia_thinks
 import config
 
 class SpontaneousMessages:
@@ -36,7 +36,7 @@ class SpontaneousMessages:
         
         # Проверяем, тихо ли в чате последние 2 часа
         if not chat_memory.is_chat_dead(2.0):
-            # Если в чате активно — откладываем
+            # Если в чате активно — откладываем на 30-120 минут
             self.next_message_time = now + timedelta(seconds=random.randint(1800, 7200))
             return False
         
@@ -49,15 +49,23 @@ class SpontaneousMessages:
             context = chat_memory.get_recent_context(30)
             
             if context:
-                # Используем AI для генерации уместного сообщения
-                ai_message = await mira_thinks(
-                    "напиши что-то в чат чтобы разрядить тишину, ты видишь что все молчат уже пару часов",
-                    "Мира",
-                    "mira_bot"
-                )
+                # Используем AI чтобы написать что-то уместное
+                prompt = f"""ты - энди, девушка-помощница в чате майнкрафт сервера.
+в чате тишина уже пару часов. напиши что-то чтобы разрядить обстановку.
+можешь спросить как дела, предложить поболтать, рассказать что-то про майнкрафт.
+
+вот что было в чате недавно:
+{context}
+
+напиши одно короткое сообщение (1-2 предложения) в своём обычном стиле - с маленькой буквы, без знаков препинания.
+
+ответь как энди:"""
+                
+                ai_message = await enderia_thinks(prompt, "чат", "system")
                 if ai_message:
                     try:
                         await bot.send_message(chat_id, ai_message)
+                        print(f"💬 Энди написала: {ai_message[:50]}...")
                     except Exception as e:
                         print(f"❌ Ошибка отправки спонтанного: {e}")
             else:
@@ -65,13 +73,15 @@ class SpontaneousMessages:
                 message = get_self_message()
                 try:
                     await bot.send_message(chat_id, message)
+                    print(f"💬 Энди написала: {message[:50]}...")
                 except Exception as e:
                     print(f"❌ Ошибка отправки: {e}")
             
             # Обновляем таймер
             self.last_self_message = datetime.now()
             self.next_message_time = self._calculate_next()
-            print(f"💬 Отправлено спонтанное сообщение, следующее в {self.next_message_time.strftime('%H:%M')}")
+            next_time_str = self.next_message_time.strftime("%H:%M")
+            print(f"⏰ Следующее спонтанное сообщение в {next_time_str}")
 
 # Глобальный экземпляр
 spontaneous = SpontaneousMessages()
