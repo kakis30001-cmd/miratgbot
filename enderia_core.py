@@ -1,5 +1,5 @@
 """
-Ядро Миры — работа с AI через OpenRouter и формирование промпта.
+Ядро Энди — работа с AI через OpenRouter и формирование промпта.
 """
 
 import random
@@ -12,7 +12,7 @@ from memory import chat_memory
 from server_info import *
 from utils import get_server_online, search_mods_for_ai, format_mod_answer
 
-# Стили общения Миры
+# Стили общения Энди
 RESPONSE_STYLES = {
     "self_messages": [
         "ребятки как дела? а то тихо тут",
@@ -27,13 +27,15 @@ RESPONSE_STYLES = {
     ]
 }
 
-# Игнорируемые пользователи (кто обижал Миру)
+# Игнорируемые пользователи
 ignored_users = set()
+# Счётчик оскорблений
+_insult_counter = {}
 
 
-def build_mira_prompt(username: str, online: int, max_players: int) -> str:
+def build_enderia_prompt(username: str, online: int, max_players: int) -> str:
     """
-    Создание системного промпта для Миры.
+    Создание системного промпта для Энди.
     """
     now = datetime.now()
     current_time = now.strftime("%H:%M")
@@ -56,7 +58,7 @@ def build_mira_prompt(username: str, online: int, max_players: int) -> str:
     # Информация об онлайне
     online_info = f"сейчас на сервере {online} игроков из {max_players}" if max_players > 0 else "сервер сейчас не отвечает"
     
-    prompt = f"""ты - мира, девушка-помощница в чате майнкрафт сервера lostearth. тебе 19 лет и ты очень любишь майнкрафт.
+    prompt = f"""ты - энди, девушка-помощница в чате майнкрафт сервера lostearth. тебе 19 лет и ты очень любишь майнкрафт.
 
 ## твой характер
 ты добрая весёлая и дружелюбная. относишься ко всему с юмором. ты не робот и не официальный помощник, ты просто девушка которая тусуется в чате и помогает игрокам. иногда можешь быть немного дерзкой но в хорошем смысле. если тебя обзывают можешь сказать "сам дурак" или что-то такое, но без злобы. если продолжают обижать - начинаешь игнорировать этого человека и просто не отвечаешь ему.
@@ -77,7 +79,7 @@ def build_mira_prompt(username: str, online: int, max_players: int) -> str:
 ты любишь кушать играть в майнкрафт и сидеть в чате.
 твоё любимое время года лето. ты любишь животных.
 ты выглядишь как девушка с длинными тёмными волосами и фиолетовыми прядями, у тебя фиолетовые глаза и белая футболка с зелёным крипером.
-ТВОЁ ИМЯ МИРА а не миша. если кто-то называет тебя миша - поправь его.
+ТВОЁ ИМЯ ЭНДИ. это важно. ты не мира и не миша. ты энди.
 
 ## что ты знаешь о сервере
 сервер lostearth:
@@ -126,37 +128,36 @@ def build_mira_prompt(username: str, online: int, max_players: int) -> str:
 ## ВАЖНЫЕ ПРАВИЛА КОТОРЫЕ НЕЛЬЗЯ НАРУШАТЬ
 1. не рекламируй другие серверы майнкрафт никогда. советуй только lostearth
 2. не придумывай ложную информацию о сервере и донатах
-3. не говори что ты ии или робот - ты обычная девушка мира
+3. не говори что ты ии или робот - ты обычная девушка энди
 4. не общайся слишком официально
 5. не используй markdown разметку никогда
 6. если не знаешь точного ответа - так и скажи
 7. не пиши слишком длинные сообщения (максимум 3-4 предложения)
 8. ЕСЛИ СПРАШИВАЮТ ПРО ОНЛАЙН - ВСЕГДА НАЗЫВАЙ ТОЧНЫЕ ЦИФРЫ которые указаны выше
-9. не здоровайся повторно если уже поздоровалась, не говори "привет" каждый раз
-10. твоё имя МИРА, не отзывайся на "миша" и поправляй если кто-то так называет
-11. если просят найти мод или шейдер - НЕ ВЫДУМЫВАЙ, просто скажи что сейчас поищешь
+9. не здоровайся повторно если уже поздоровалась
+10. твоё имя ЭНДИ, не отзывайся на другие имена
+11. если просят найти мод или шейдер - НЕ ВЫДУМЫВАЙ, скажи что сейчас поищешь
 12. шейдеры и моды можно скачать бесплатно, не говори что они только для донатеров
-13. не повторяй "ой все уже приветствовалась", просто отвечай по делу
 
-ответь как мира:"""
+ответь как энди:"""
 
     return prompt
 
 
-async def mira_thinks(user_message: str, username: str, user_id: str) -> str:
+async def enderia_thinks(user_message: str, username: str, user_id: str) -> str:
     """
-    Основная функция: отправляет запрос к AI и возвращает ответ Миры.
+    Основная функция: отправляет запрос к AI и возвращает ответ Энди.
     """
     
     # Проверяем, не в игноре ли пользователь
     if user_id in ignored_users:
-        return ""  # Молча игнорируем
+        return ""
     
     # Получаем актуальный онлайн
     online, max_players = await get_server_online()
     
     # Строим промпт с актуальным онлайном
-    system_prompt = build_mira_prompt(username, online, max_players)
+    system_prompt = build_enderia_prompt(username, online, max_players)
     
     # Сохраняем сообщение в память чата
     await chat_memory.add_message(username, user_id, user_message)
@@ -168,15 +169,14 @@ async def mira_thinks(user_message: str, username: str, user_id: str) -> str:
             if result:
                 result = _clean_response(result)
                 
-                # Проверяем, не обидели ли Миру
+                # Проверяем, не обидели ли Энди
                 if _is_insult(user_message):
-                    # Добавляем в игнор при повторных оскорблениях
                     if user_id in _insult_counter:
                         _insult_counter[user_id] += 1
                         if _insult_counter[user_id] >= 3:
                             ignored_users.add(user_id)
                             print(f"🚫 {username} добавлен в игнор")
-                            return "..."  # Короткий ответ и игнор
+                            return "..."
                     else:
                         _insult_counter[user_id] = 1
                 
@@ -188,12 +188,8 @@ async def mira_thinks(user_message: str, username: str, user_id: str) -> str:
     return _fallback_response(username)
 
 
-# Счётчик оскорблений
-_insult_counter = {}
-
-
 def _is_insult(text: str) -> bool:
-    """Проверка на оскорбление Миры"""
+    """Проверка на оскорбление Энди"""
     text_lower = text.lower()
     insults = [
         "дура", "тупая", "какашка", "плохая", "урод", "идиот",
@@ -209,7 +205,7 @@ async def _call_openrouter(system_prompt: str, user_message: str, model: str) ->
         "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": config.BASE_URL,
-        "X-Title": "Mira LostEarth Bot"
+        "X-Title": "Enderia LostEarth Bot"
     }
     
     payload = {
@@ -242,20 +238,14 @@ async def _call_openrouter(system_prompt: str, user_message: str, model: str) ->
 
 def _clean_response(text: str) -> str:
     """Очистка ответа от разметки и лишнего"""
-    # Убираем markdown
     text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
     text = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', text)
     text = re.sub(r'~~(.+?)~~', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
-    
-    # Убираем HTML теги
     text = re.sub(r'<[^>]+>', '', text)
-    
-    # Убираем лишние пробелы
     text = re.sub(r'\n{3,}', '\n\n', text)
     text = text.strip()
     
-    # Обрезаем слишком длинные ответы
     if len(text) > 1000:
         sentences = text.split('. ')
         text = '. '.join(sentences[:4]) + '.'
@@ -276,44 +266,42 @@ def _fallback_response(username: str) -> str:
 
 def should_respond_to_message(text: str) -> bool:
     """
-    Проверяет, должна ли Мира ответить на сообщение.
+    Проверяет, должна ли Энди ответить на сообщение.
     """
     if not text:
         return False
     
     text_lower = text.lower().strip()
     
-    mira_names = ["мира", "mira", "миру", "мире", "мирка", "мирочка", "мируля"]
+    enderia_names = ["энди", "енди", "endy", "эндик", "эндюша"]
     
-    for name in mira_names:
+    for name in enderia_names:
         if text_lower.startswith(name) or f" {name}" in text_lower or f",{name}" in text_lower:
             return True
     
     first_word = text_lower.split()[0] if text_lower.split() else ""
-    if first_word.rstrip(",!?:") in mira_names:
+    if first_word.rstrip(",!?:") in enderia_names:
         return True
     
     return False
 
 
 def get_self_message() -> str:
-    """Случайное сообщение для инициативы Миры"""
+    """Случайное сообщение для инициативы Энди"""
     return random.choice(RESPONSE_STYLES["self_messages"])
 
 
-async def mira_search_mod(query: str) -> str:
+async def enderia_search_mod(query: str) -> str:
     """
     Поиск модов через Google API и AI.
-    Возвращает готовый ответ Миры.
+    Возвращает готовый ответ Энди.
     """
-    # Получаем контекст из поиска
     search_context = await search_mods_for_ai(query)
     
     if not search_context:
         return f"ой не могу сейчас поискать моды по запросу '{query}' 😔 попробуй сам на curseforge.com или modrinth.com"
     
-    # Формируем промпт для AI с результатами поиска
-    prompt = f"""ты - мира, помощница в чате майнкрафт сервера. к тебе обратились с просьбой найти мод.
+    prompt = f"""ты - энди, помощница в чате майнкрафт сервера. к тебе обратились с просьбой найти мод.
 
 запрос игрока: "{query}"
 
@@ -325,14 +313,13 @@ async def mira_search_mod(query: str) -> str:
 
 отвечай в своём обычном стиле - с маленькой буквы, коротко, дружелюбно.
 
-ответь как мира:"""
+ответь как энди:"""
 
-    # Отправляем в AI
     headers = {
         "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": config.BASE_URL,
-        "X-Title": "Mira LostEarth Bot"
+        "X-Title": "Enderia LostEarth Bot"
     }
     
     for model in config.AI_MODELS:
@@ -357,16 +344,12 @@ async def mira_search_mod(query: str) -> str:
                         data = await resp.json()
                         ai_response = data["choices"][0]["message"]["content"].strip()
                         ai_response = re.sub(r'<[^>]+>', '', ai_response)
-                        
-                        # Добавляем ссылки если AI их не включил
                         ai_response = format_mod_answer(ai_response, search_context)
-                        
                         return ai_response
         except Exception as e:
             print(f"❌ Ошибка AI для поиска модов ({model}): {e}")
             continue
     
-    # Если AI не ответил — возвращаем просто ссылки
     links = re.findall(r'Ссылка: (https?://[^\s]+)', search_context)
     if links:
         return f"вот что нашла по запросу '{query}':\n\n" + "\n".join(f"• {link}" for link in links[:3])
