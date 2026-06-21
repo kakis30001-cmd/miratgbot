@@ -33,9 +33,9 @@ dp = Dispatcher(storage=MemoryStorage())
 def get_start_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌐 IP сервера", callback_data="info_ip")],
-        [InlineKeyboardButton(text="📜 Правила", url=config.BASE_URL + "/rules")],
-        [InlineKeyboardButton(text="💎 Донат", url=config.BASE_URL + "/donate")],
-        [InlineKeyboardButton(text="📝 Заявка на мирный", url=config.BASE_URL + "/apply")],
+        [InlineKeyboardButton(text="📜 ПРАВИЛА", url=f"{config.BASE_URL}/rules")],
+        [InlineKeyboardButton(text="💎 ДОНАТ", url=f"{config.BASE_URL}/donate")],
+        [InlineKeyboardButton(text="📝 ЗАЯВКА", url=f"{config.BASE_URL}/apply")],
     ])
 
 
