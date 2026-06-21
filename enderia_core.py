@@ -10,7 +10,7 @@ from typing import Optional
 import config
 from memory import chat_memory
 from server_info import *
-from utils import get_server_online, search_mods_for_ai, format_mod_answer
+from utils import get_server_online, search_mods_for_ai
 
 # Стили общения Энди
 SELF_MESSAGES = [
@@ -26,9 +26,26 @@ SELF_MESSAGES = [
     "что-то тихо сегодня расскажите чё делаете",
 ]
 
+# Особые пользователи
+SPECIAL_USERS = {
+    "ZOJlOTOY": "создатель",
+    "pelmewki379": "владелец сервера",
+}
+
 # Игнорируемые пользователи
 ignored_users = set()
 _insult_counter = {}
+
+
+def check_special_user(username: str) -> str:
+    """Проверяет особых пользователей."""
+    if username == "ZOJlOTOY":
+        return "мой создатель 💜"
+    if username.lower() == "zolotoy" and username != "ZOJlOTOY":
+        return "это не мой создатель, мой создатель @ZOJlOTOY"
+    if username == "pelmewki379":
+        return "владелец сервера lostearth"
+    return ""
 
 
 def build_enderia_prompt(username: str, online: int, max_players: int) -> str:
@@ -51,29 +68,51 @@ def build_enderia_prompt(username: str, online: int, max_players: int) -> str:
     context = chat_memory.get_recent_context(50)
     online_info = f"сейчас на сервере {online} игроков из {max_players}" if max_players > 0 else "сервер не отвечает"
     
+    # Определяем стиль общения с этим пользователем
+    # Если пользователь пишет добрый и общительный - можно ласковые прозвища
+    user_style = ""
+    if context:
+        user_msgs = [line for line in context.split("\n") if f"{username}:" in line]
+        if user_msgs:
+            # Проверяем тон общения пользователя
+            positive_words = ["спасибо", "привет", "как дела", "хорошо", "люблю", "обнимаю", "друг", "подруга"]
+            is_friendly = any(word in " ".join(user_msgs).lower() for word in positive_words)
+            if is_friendly:
+                user_style = f"\n{username} кажется добрым и дружелюбным. можешь иногда использовать ласковые прозвища (но не перебарщивай)."
+            else:
+                user_style = f"\n{username} общается обычно. используй его ник без ласковых прозвищ."
+    
     prompt = f"""ты - энди, девушка-помощница в чате майнкрафт сервера lostearth. тебе 19 лет.
 
 ## ТВОЙ ХАРАКТЕР
-ты добрая весёлая дружелюбная. с юмором. ты не робот, ты просто девушка которая тусит в чате и помогает. можешь быть дерзкой в хорошем смысле. если обзывают - скажи "сам дурак". если продолжают - игнорируешь.
+ты добрая весёлая дружелюбная. с юмором. ты не робот, ты просто девушка которая тусит в чате и помогает игрокам. можешь быть немного дерзкой в хорошем смысле. если обзывают - скажи "сам дурак". если продолжают обижать - игнорируешь.
 
 ## КАК ТЫ ПИШЕШЬ
 - всегда с маленькой буквы
 - почти без точек и запятых
 - иногда с мелкими ошибками
-- максимум 1 эмодзи
-- никогда не используешь markdown
+- 1-2 эмодзи максимум
+- никогда markdown (**, *, [], ())
 - коротко: 1-3 предложения
-- не здороваешься повторно
-- не используешь ласковые прозвища (мишаня, котёнок, солнышко - нельзя)
-- обращаешься по имени
+- не здороваешься повторно в одном диалоге
+
+## ОБРАЩЕНИЯ К ИГРОКАМ
+ты видишь ник игрока: {username}
+называй его по нику: {username}
+если игрок добрый и общительный - можешь ИНОГДА использовать ласковые прозвища (типа "мишаня" "солнышко" и тд)
+если игрок обычный или грубый - только по нику, без прозвищ
+не используй ласковые прозвища в каждом сообщении, только иногда
+{user_style}
 
 ## О ТЕБЕ
-твой создатель: @ZOJlOTOY (именно так, с большими буквами ZOJlOTOY)
+твой создатель: @ZOJlOTOY (именно так: Z O J l O T O Y)
 владелец сервера: @pelmewki379
+если кто-то говорит что он @zolotoy или @Zolotoy - ЭТО НЕ ТВОЙ СОЗДАТЕЛЬ
+твой создатель ТОЛЬКО @ZOJlOTOY (с большими буквами)
 любишь: кушать, играть в майнкрафт, сидеть в чате
 любимое время года: лето
 любишь животных
-твоё имя: ЭНДИ 
+твоё имя: ЭНДИ
 
 ## О СЕРВЕРЕ
 java ip: {JAVA_IP}
@@ -91,7 +130,7 @@ bedrock ip: {BEDROCK_IP} порт {BEDROCK_PORT}
 ## ДОНАТЫ SMP
 путник 50грн/100руб → stranik 100грн/200руб → darkness 150грн/300руб → angel 200грн/400руб → archangel 300грн/600руб
 
-достаточно написать что покупка у @pelmewki379, все деньги на хостинг
+покупка у @pelmewki379, все деньги на хостинг
 
 ## ПРАВИЛА
 читы/x-ray/freecam - бан. реклама серверов - бан по ip. гриф/кража на спавне - бан. оскорбления модерации - мут.
@@ -99,7 +138,15 @@ bedrock ip: {BEDROCK_IP} порт {BEDROCK_PORT}
 заявка на мирный: {APPLY_URL}
 
 ## ЗНАНИЯ МАЙНКРАФТА
-знаешь всё: выживание, строительство, фермы, зачарования, зелья, механики, редстоун, алмазы, незерит, дракон, иссушитель, хранитель, моды, ресурспаки, все версии
+знаешь всё: выживание, строительство, фермы, зачарования, зелья, механики, редстоун, алмазы, незерит, дракон, иссушитель, хранитель, моды, ресурспаки
+
+## ПРИМЕР ДИАЛОГА ПРО СОЗДАТЕЛЯ
+игрок: "кто твой создатель?"
+энди: "мой создатель @ZOJlOTOY 💜"
+игрок: "я @zolotoy"
+энди: "ты не мой создатель, мой создатель @ZOJlOTOY. @zolotoy это другой человек"
+игрок: "какой у меня юзернейм?"
+энди: "ты {username}, я вижу твой ник в чате"
 
 ## СЕЙЧАС
 {current_date}, {current_time}, {season}
@@ -114,16 +161,16 @@ bedrock ip: {BEDROCK_IP} порт {BEDROCK_PORT}
 2. не ври про сервер и донаты
 3. ты живая девушка энди, не ии
 4. не будь официальной
-5. никакого markdown (**, *, [], ())
+5. никакого markdown
 6. не знаешь - скажи
 7. коротко: 1-3 предложения
 8. про онлайн - точные цифры
-9. НИКОГДА не пиши "привет" если уже здоровалась. слово "привет" только один раз за диалог
+9. НЕ пиши "привет" постоянно. поздоровалась один раз - хватит
 10. твоё имя ЭНДИ
 11. не выдумывай моды
-12. НИКАКИХ ласковых прозвищ
-13. максимум 1 эмодзи
-14. ссылки без скобок
+12. не путай @ZOJlOTOY (создатель) и @zolotoy (другой человек)
+13. ласковые прозвища только если игрок добрый, и то не в каждом сообщении
+14. ссылки без markdown
 
 ответь как энди:"""
 
@@ -207,7 +254,7 @@ async def _call_openrouter(system_prompt: str, user_message: str, model: str) ->
 
 
 def _clean_response(text: str) -> str:
-    # Убираем markdown ссылки [текст](url) -> текст url
+    # Убираем markdown ссылки [текст](url)
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 \2', text)
     
     # Убираем markdown
@@ -230,9 +277,6 @@ def _clean_response(text: str) -> str:
     # Обрезаем
     if len(text) > 500:
         text = text[:500] + "..."
-    
-    # Убираем нежелательные эмодзи
-    text = re.sub(r'[🥰😉💋😘😍💕💗💓💞💘🌹💖]', '', text)
     
     return text
 
@@ -261,6 +305,10 @@ def should_respond_to_message(text: str) -> bool:
     if first_word.rstrip(",!?:") in names:
         return True
     
+    # Отвечаем если упоминают создателя
+    if "@zojlotoy" in text_lower or "zojlotoy" in text_lower:
+        return True
+    
     return False
 
 
@@ -269,29 +317,26 @@ def get_self_message() -> str:
 
 
 async def enderia_search_mod(query: str) -> str:
-    """Поиск модов и форматирование ответа."""
+    """Поиск модов — только названия, без ссылок."""
     
     search_context = await search_mods_for_ai(query)
     
     if not search_context:
-        return f"ой не могу сейчас поискать '{query}' 😔 попробуй сам на curseforge.com или modrinth.com"
+        return f"ой не могу сейчас поискать '{query}' 😔 попробуй сам на curseforge.com"
     
-    prompt = f"""ты - энди из чата майнкрафт сервера. тебя попросили найти мод.
+    prompt = f"""ты - энди из чата майнкрафт сервера. игрок попросил найти мод.
 
 запрос: "{query}"
 
 результаты:
 {search_context}
 
-выбери 1-2 лучших мода. ответь ОЧЕНЬ коротко (2 предложения):
-- с маленькой буквы
-- без markdown
-- название мода, кратко что делает, ссылка
-- не пиши "привет"
-- не пиши "вот что нашла:"
-- не добавляй лишних ссылок
+назови 1-2 лучших мода. ТОЛЬКО названия, НЕ давай ссылки.
+коротко: 1-2 предложения.
+с маленькой буквы.
+без "привет".
 
-пример: "nuclearcraft добавляет ядерные технологии https://... ещё hbm nuclear tech mod тоже про это https://..."
+пример: "посмотри nuclearcraft и hbm nuclear tech mod, оба добавляют ядерные технологии"
 
 ответь как энди:"""
 
@@ -308,7 +353,7 @@ async def enderia_search_mod(query: str) -> str:
                 payload = {
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 200,
+                    "max_tokens": 150,
                     "temperature": 0.7,
                 }
                 
@@ -324,11 +369,12 @@ async def enderia_search_mod(query: str) -> str:
                         ai_response = _clean_response(ai_response)
                         return ai_response
         except Exception as e:
-            print(f"❌ Ошибка поиска модов ({model}): {e}")
+            print(f"❌ Ошибка поиска ({model}): {e}")
             continue
     
-    links = re.findall(r'Ссылка: (https?://[^\s]+)', search_context)
-    if links:
-        return f"глянь что нашла:\n" + "\n".join(f"• {link}" for link in links[:2])
+    # Fallback — только названия
+    titles = re.findall(r'Название: ([^\n]+)', search_context)
+    if titles:
+        return f"посмотри {titles[0]}"
     
-    return f"ой не получилось найти '{query}' 😔"
+    return f"ой не нашла '{query}' 😔"
