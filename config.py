@@ -20,20 +20,19 @@ CREATOR = "@ZOJlOTOY"
 OWNER = "@pelmewki379"
 OWNER_TG = "pelmewki379"
 
-# AI модели — бесплатные с большим контекстом (июнь 2025)
+# AI модели — бесплатные рабочие (июнь 2026)
 AI_MODELS = [
-    # Основные — лучшие для общения на русском
-    "qwen/qwen3-235b-a22b:free",          # Qwen 3 — лучший русский, 235B
-    "meta-llama/llama-3.3-70b-instruct:free", # Llama 3.3 — проверенный стандарт
-    "deepseek/deepseek-r1:free",          # DeepSeek R1 — думает перед ответом
+    # Основная — лучшая для русского языка и логики
+    "openai/gpt-oss-120b:free",          # GPT-OSS 120B — огромная, Chain-of-Thought
     
-    # Быстрые и креативные
-    "tencent/hy3:preview",                # Hy3 — богатый русский язык
-    "stepfun/step-3.5-flash:free",        # Step 3.5 — быстрая и умная
+    # Быстрая для повседневного общения
+    "openai/gpt-oss-20b:free",           # GPT-OSS 20B — быстрая, лёгкая
     
-    # С большим контекстом
-    "google/gemma-4-31b-instruct:free",   # Gemma 4 — 256K контекст
-    "nvidia/nemotron-3-super:free",       # Nemotron — 1M контекст
+    # От Google — отличный русский
+    "google/gemma-4-31b-instruct:free",  # Gemma 4 — 256K контекст
+    
+    # NVIDIA — огромный контекст
+    "nvidia/nemotron-3-super:free",      # Nemotron 3 — 1M контекст
 ]
 
 # Интервал спонтанных сообщений (в секундах)
@@ -51,6 +50,9 @@ MC_SERVER = {
     "bedrock_port": 19132,
     "version": "1.21—1.26+",
 }
+
+# Админы для команд
+ADMIN_IDS = [8493522297]
 
 # Реакции Энди на сообщения
 ENDERIA_REACTIONS = {
