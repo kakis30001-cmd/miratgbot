@@ -3,7 +3,7 @@
 Запускает веб-сервер и бота Энди.
 """
 
-import asynci
+import asyncio
 import os
 from threading import Thread
 
