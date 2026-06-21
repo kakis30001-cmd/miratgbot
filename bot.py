@@ -20,6 +20,7 @@ from enderia_core import (
     enderia_thinks,
     should_respond_to_message,
     enderia_search_mod,
+    check_special_user,
 )
 from spontaneous import spontaneous
 
@@ -41,7 +42,7 @@ def get_start_keyboard():
 # ========== РЕАКЦИИ ==========
 
 async def react_to_message(message: Message):
-    """Энди ставит реакцию на сообщения с ключевыми словами."""
+    """Энди ставит реакцию на сообщения."""
     if not message.text:
         return
     if message.from_user.id == bot.id:
@@ -49,22 +50,42 @@ async def react_to_message(message: Message):
     
     text_lower = message.text.lower()
     
-    for keyword, emoji in config.ENDERIA_REACTIONS.items():
-        if keyword in text_lower:
+    # Простые эмодзи которые работают в Telegram
+    reaction_map = {
+        "🔥": ["круто", "топ", "имба", "збс", "огонь"],
+        "👍": ["красиво", "молодец", "хорошо", "найс", "ок"],
+        "❤️": ["красота", "люблю", "обожаю"],
+        "👏": ["поздравляю", "ура", "молодчик"],
+        "💜": ["спасибо", "энди"],
+        "😂": ["смешно", "ахах", "лол", "ржу", "угар", "прикол", "ор"],
+        "😢": ["грустно", "жаль", "обидно"],
+        "😱": ["ого", "ничего себе", "офигеть"],
+        "💎": ["алмаз", "алмазы"],
+        "💀": ["умер", "смерть"],
+        "⛏️": ["шахта", "копать"],
+        "🌾": ["ферма", "урожай"],
+        "🏆": ["победил", "победа"],
+        "🐱": ["кот", "кошка", "котик"],
+        "🐶": ["собака", "пёс", "щенок"],
+        "🍕": ["вкусно", "еда", "кушать", "готовлю"],
+        "🎮": ["игра", "играю", "майнкрафт"],
+    }
+    
+    for emoji, keywords in reaction_map.items():
+        if any(kw in text_lower for kw in keywords):
             try:
                 await message.react([ReactionTypeEmoji(emoji=emoji)])
                 return
-            except Exception as e:
-                print(f"❌ Ошибка реакции: {e}")
+            except Exception:
                 return
     
-    # Случайная реакция 3%
-    if random.random() < 0.03:
-        random_emoji = random.choice(["💜", "✨", "🌿", "💎", "⛏️"])
+    # Случайная реакция 5%
+    if random.random() < 0.05:
         try:
-            await message.react([ReactionTypeEmoji(emoji=random_emoji)])
-        except Exception as e:
-            print(f"❌ Ошибка случайной реакции: {e}")
+            emoji = random.choice(["💜", "✨", "🌿", "💎", "⛏️", "👍", "🔥", "😊", "🎮"])
+            await message.react([ReactionTypeEmoji(emoji=emoji)])
+        except Exception:
+            pass
 
 
 # ========== КОМАНДЫ ==========
@@ -88,10 +109,10 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 
 👥 онлайн: {online}/{max_players}
 
-я общаюсь в чате сервера, а тут могу только показать инфу
+я общаюсь в чате, а тут только инфа
 
-создал меня @ZOJlOTOY
-владелец сервера @pelmewki379"""
+создатель @ZOJlOTOY
+владелец @pelmewki379"""
 
     await message.answer(text, reply_markup=get_start_keyboard())
 
@@ -99,21 +120,18 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     text = """чем я могу помочь:
-
 • рассказать о сервере и донатах
 • найти мод или ресурспак
 • помочь с майнкрафтом
 • просто поболтать
 
-команды:
-/start /ip /online /donate /rules"""
+команды: /start /ip /online /donate /rules"""
     await message.answer(text)
 
 
 @dp.message(Command("ip"))
 async def cmd_ip(message: Message):
     text = f"""🌐 lostearth
-
 java: {JAVA_IP}
 bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 версии: {VERSIONS}"""
@@ -123,10 +141,7 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 @dp.message(Command("online"))
 async def cmd_online(message: Message):
     online, max_players = await get_server_online()
-    if online > 0:
-        text = f"сейчас на сервере {online} из {max_players} игроков 🎮"
-    else:
-        text = "сервер сейчас пустой заходи!"
+    text = f"онлайн: {online}/{max_players} 🎮" if online > 0 else "сервер пуст заходи!"
     await message.answer(text)
 
 
@@ -134,16 +149,12 @@ async def cmd_online(message: Message):
 async def cmd_donate(message: Message):
     text = f"""💎 донат lostearth
 
-все деньги идут на хостинг!
-каждый донат включает предыдущие
+всё на хостинг, каждый уровень включает предыдущий
 
-мирный режим:
-друид 25грн/50руб → оракул 50грн/100руб → монарх 100грн/200руб → херувим 150грн/300руб → архонт 200грн/400руб → серафим 300грн/600руб
+мирный: друид 25грн → оракул 50грн → монарх 100грн → херувим 150грн → архонт 200грн → серафим 300грн
+smp: путник 50грн → stranik 100грн → darkness 150грн → angel 200грн → archangel 300грн
 
-smp (скоро):
-путник → stranik → darkness → angel → archangel
-
-покупать у @pelmewki379
+покупка: @pelmewki379
 подробнее: {DONATE_URL}"""
     await message.answer(text)
 
@@ -151,22 +162,20 @@ smp (скоро):
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
     text = f"""📜 правила lostearth:
-
-• запрещены читы x-ray freecam - бан
-• запрещена реклама серверов - бан по ip
-• гриф и кража на спавне - бан
+• читы/x-ray/freecam - бан
+• реклама серверов - бан по ip
+• гриф/кража - бан
 • оскорбления модерации - мут
 
-полные правила: {RULES_URL}"""
+полные: {RULES_URL}"""
     await message.answer(text)
 
 
 @dp.message(Command("apply"))
 async def cmd_apply(message: Message):
     text = f"""📝 заявка на мирный режим
-
-подать можно тут: {APPLY_URL}
-после заявки жди ответа от администрации!"""
+подать: {APPLY_URL}
+жди ответа администрации"""
     await message.answer(text)
 
 
@@ -190,7 +199,7 @@ def _extract_mod_query(text: str) -> str:
         match = re.search(pattern, text_lower)
         if match:
             query = match.group(1).strip()
-            query = re.sub(r'\b(мод|моды|мне|пожалуйста|плиз|плз)\b', '', query).strip()
+            query = re.sub(r'\b(мод|моды|мне|пожалуйста|плиз)\b', '', query).strip()
             if query:
                 return query
     return ""
@@ -222,6 +231,13 @@ async def handle_chat_message(message: Message):
     if not is_directed and not is_reply:
         return
 
+    # Проверка на особого пользователя (создатель, владелец)
+    if "кто" in text.lower() and ("создател" in text.lower() or "юзернейм" in text.lower() or "владел" in text.lower()):
+        special = check_special_user(username)
+        if special:
+            await message.reply(special)
+            return
+
     # Поиск мода
     mod_query = _extract_mod_query(text)
     if mod_query:
@@ -241,11 +257,9 @@ async def handle_chat_message(message: Message):
 async def callback_info_ip(callback: types.CallbackQuery):
     online, max_players = await get_server_online()
     text = f"""🌐 lostearth
-
 java: {JAVA_IP}
 bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 версии: {VERSIONS}
-
 👥 онлайн: {online}/{max_players}"""
     await callback.message.edit_text(text, reply_markup=get_start_keyboard())
     await callback.answer()
@@ -254,13 +268,13 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 # ========== ФОНОВЫЕ ЗАДАЧИ ==========
 
 async def spontaneous_loop():
-    print("💬 Цикл спонтанных сообщений запущен")
+    print("💬 Спонтанные сообщения запущены")
     while True:
         await asyncio.sleep(60)
         try:
             await spontaneous.send_if_needed(bot, config.GROUP_CHAT_ID)
         except Exception as e:
-            print(f"❌ Ошибка спонтанного: {e}")
+            print(f"❌ Ошибка: {e}")
 
 
 async def memory_cleanup_loop():
@@ -281,12 +295,12 @@ async def main():
     asyncio.create_task(spontaneous_loop())
     asyncio.create_task(memory_cleanup_loop())
 
-    print("✅ Энди запущена и слушает чат")
+    print("✅ Энди запущена")
 
     try:
         await dp.start_polling(bot)
     except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
+        print(f"❌ Ошибка: {e}")
     finally:
         await chat_memory.close()
         await bot.session.close()
