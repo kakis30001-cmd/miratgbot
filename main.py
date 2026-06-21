@@ -30,11 +30,15 @@ def donate():
 def apply():
     return send_from_directory('static', 'apply.html')
 
+# Healthcheck для Railway
+@app.route('/health')
+def health():
+    return "OK", 200
+
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
 
-# Запуск всего
 if __name__ == "__main__":
     from bot import main as bot_main
     
