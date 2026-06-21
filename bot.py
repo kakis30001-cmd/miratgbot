@@ -39,6 +39,24 @@ def get_start_keyboard():
     ])
 
 
+def get_user_display_name(message: Message) -> str:
+    """
+    Получает полное отображаемое имя пользователя.
+    Формат: "имя (@юзернейм)" или просто "имя" если юзернейма нет.
+    """
+    first_name = message.from_user.first_name or "игрок"
+    telegram_username = message.from_user.username
+    
+    if telegram_username:
+        return f"{first_name} (@{telegram_username})"
+    return first_name
+
+
+def get_user_short_name(message: Message) -> str:
+    """Получает короткое имя для сохранения в память."""
+    return message.from_user.first_name or message.from_user.username or "игрок"
+
+
 # ========== РЕАКЦИИ ==========
 
 async def react_to_message(message: Message):
@@ -50,7 +68,6 @@ async def react_to_message(message: Message):
     
     text_lower = message.text.lower()
     
-    # Простые эмодзи которые работают в Telegram
     reaction_map = {
         "🔥": ["круто", "топ", "имба", "збс", "огонь"],
         "👍": ["красиво", "молодец", "хорошо", "найс", "ок"],
@@ -214,12 +231,15 @@ async def handle_chat_message(message: Message):
     if message.chat.type == "private":
         return
 
-    username = message.from_user.first_name or message.from_user.username or "игрок"
+    # Полное имя с юзернеймом для AI
+    display_name = get_user_display_name(message)
+    # Короткое имя для памяти
+    short_name = get_user_short_name(message)
     user_id = str(message.from_user.id)
     text = message.text
 
     # Сохраняем в память
-    await chat_memory.add_message(username, user_id, text)
+    await chat_memory.add_message(short_name, user_id, text)
 
     # Реакции
     await react_to_message(message)
@@ -231,9 +251,9 @@ async def handle_chat_message(message: Message):
     if not is_directed and not is_reply:
         return
 
-    # Проверка на особого пользователя (создатель, владелец)
-    if "кто" in text.lower() and ("создател" in text.lower() or "юзернейм" in text.lower() or "владел" in text.lower()):
-        special = check_special_user(username)
+    # Проверка на особого пользователя
+    if any(word in text.lower() for word in ["кто", "создател", "владел", "юзернейм", "ник"]):
+        special = check_special_user(short_name)
         if special:
             await message.reply(special)
             return
@@ -246,9 +266,9 @@ async def handle_chat_message(message: Message):
         await message.reply(result)
         return
 
-    # Ответ через AI
+    # Ответ через AI (передаём полное имя с юзернеймом)
     await bot.send_chat_action(message.chat.id, action="typing")
-    response = await enderia_thinks(text, username, user_id)
+    response = await enderia_thinks(text, display_name, user_id)
     if response:
         await message.reply(response)
 
