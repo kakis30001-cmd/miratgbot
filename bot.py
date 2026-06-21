@@ -8,7 +8,7 @@ import re
 import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji
+from aiogram.types import Message, ReactionTypeEmoji
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 
@@ -20,7 +20,6 @@ from enderia_core import (
     enderia_thinks,
     should_respond_to_message,
     enderia_search_mod,
-    check_special_user,
 )
 from spontaneous import spontaneous
 
@@ -30,64 +29,36 @@ bot = Bot(token=config.BOT_TOKEN, default=default)
 dp = Dispatcher(storage=MemoryStorage())
 
 
-def get_start_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌐 IP сервера", callback_data="info_ip")],
-        [InlineKeyboardButton(text="📜 ПРАВИЛА", url=f"{config.BASE_URL}/rules")],
-        [InlineKeyboardButton(text="💎 ДОНАТ", url=f"{config.BASE_URL}/donate")],
-        [InlineKeyboardButton(text="📝 ЗАЯВКА", url=f"{config.BASE_URL}/apply")],
-    ])
-
-
-def get_user_display_name(message: Message) -> str:
-    """
-    Получает полное отображаемое имя пользователя.
-    Формат: "имя (@юзернейм)" или просто "имя" если юзернейма нет.
-    """
-    first_name = message.from_user.first_name or "игрок"
-    telegram_username = message.from_user.username
-    
-    if telegram_username:
-        return f"{first_name} (@{telegram_username})"
-    return first_name
-
-
-def get_user_short_name(message: Message) -> str:
-    """Получает короткое имя для сохранения в память."""
-    return message.from_user.first_name or message.from_user.username or "игрок"
-
-
 # ========== РЕАКЦИИ ==========
 
 async def react_to_message(message: Message):
-    """Энди ставит реакцию на сообщения."""
+    """Энди ставит реакцию на сообщения с ключевыми словами."""
     if not message.text:
         return
     if message.from_user.id == bot.id:
         return
-    
+
     text_lower = message.text.lower()
-    
+
     reaction_map = {
         "🔥": ["круто", "топ", "имба", "збс", "огонь"],
         "👍": ["красиво", "молодец", "хорошо", "найс", "ок"],
-        "❤️": ["красота", "люблю", "обожаю"],
+        "❤️": ["красота", "люблю"],
         "👏": ["поздравляю", "ура", "молодчик"],
         "💜": ["спасибо", "энди"],
         "😂": ["смешно", "ахах", "лол", "ржу", "угар", "прикол", "ор"],
-        "😢": ["грустно", "жаль", "обидно"],
-        "😱": ["ого", "ничего себе", "офигеть"],
+        "😢": ["грустно", "жаль", "обидно", "плохо"],
+        "😱": ["ого", "ничего себе", "офигеть", "шок"],
         "💎": ["алмаз", "алмазы"],
         "💀": ["умер", "смерть"],
         "⛏️": ["шахта", "копать"],
         "🌾": ["ферма", "урожай"],
-        "🏆": ["победил", "победа"],
-        "🐱": ["кот", "кошка", "котик"],
-        "🐶": ["собака", "пёс", "щенок"],
-        "🍕": ["вкусно", "еда", "кушать", "готовлю"],
-        "🎮": ["игра", "играю", "майнкрафт"],
+        "🏆": ["победил", "победа", "выиграл"],
+        "💚": ["крипер"],
+        "🖤": ["эндер"],
+        "🐉": ["дракон"],
     }
-    
+
     for emoji, keywords in reaction_map.items():
         if any(kw in text_lower for kw in keywords):
             try:
@@ -95,7 +66,7 @@ async def react_to_message(message: Message):
                 return
             except Exception:
                 return
-    
+
     # Случайная реакция 5%
     if random.random() < 0.05:
         try:
@@ -126,29 +97,34 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 
 👥 онлайн: {online}/{max_players}
 
-я общаюсь в чате, а тут только инфа
+я общаюсь в чате сервера, а тут могу только показать инфу
 
-создатель @ZOJlOTOY
-владелец @pelmewki379"""
+создал меня @ZOJlOTOY
+владелец сервера @pelmewki379
 
-    await message.answer(text, reply_markup=get_start_keyboard())
+скоро будет сайт со всей инфой!"""
+
+    await message.answer(text)
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     text = """чем я могу помочь:
+
 • рассказать о сервере и донатах
 • найти мод или ресурспак
 • помочь с майнкрафтом
 • просто поболтать
 
-команды: /start /ip /online /donate /rules"""
+команды:
+/start /ip /online /donate /rules"""
     await message.answer(text)
 
 
 @dp.message(Command("ip"))
 async def cmd_ip(message: Message):
     text = f"""🌐 lostearth
+
 java: {JAVA_IP}
 bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 версии: {VERSIONS}"""
@@ -158,41 +134,52 @@ bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
 @dp.message(Command("online"))
 async def cmd_online(message: Message):
     online, max_players = await get_server_online()
-    text = f"онлайн: {online}/{max_players} 🎮" if online > 0 else "сервер пуст заходи!"
+    if online > 0:
+        text = f"сейчас на сервере {online} из {max_players} игроков 🎮"
+    else:
+        text = "сервер сейчас пустой заходи!"
     await message.answer(text)
 
 
 @dp.message(Command("donate"))
 async def cmd_donate(message: Message):
-    text = f"""💎 донат lostearth
+    text = """💎 донат lostearth
 
-всё на хостинг, каждый уровень включает предыдущий
+все деньги идут на хостинг!
+каждый донат включает предыдущие
 
-мирный: друид 25грн → оракул 50грн → монарх 100грн → херувим 150грн → архонт 200грн → серафим 300грн
-smp: путник 50грн → stranik 100грн → darkness 150грн → angel 200грн → archangel 300грн
+мирный режим:
+друид 25грн/50руб → оракул 50грн/100руб → монарх 100грн/200руб → херувим 150грн/300руб → архонт 200грн/400руб → серафим 300грн/600руб
 
-покупка: @pelmewki379
-подробнее: {DONATE_URL}"""
+smp (скоро):
+путник → stranik → darkness → angel → archangel
+
+покупать у @pelmewki379"""
     await message.answer(text)
 
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
-    text = f"""📜 правила lostearth:
-• читы/x-ray/freecam - бан
-• реклама серверов - бан по ip
-• гриф/кража - бан
-• оскорбления модерации - мут
+    text = """📜 правила lostearth:
 
-полные: {RULES_URL}"""
+• запрещены читы x-ray freecam - бан
+• запрещена реклама серверов - бан по ip
+• гриф и кража на спавне - бан
+• оскорбления модерации - мут
+• нельзя рушить дома на спавне
+
+скоро сайт с полными правилами"""
     await message.answer(text)
 
 
 @dp.message(Command("apply"))
 async def cmd_apply(message: Message):
-    text = f"""📝 заявка на мирный режим
-подать: {APPLY_URL}
-жди ответа администрации"""
+    text = """📝 заявка на мирный режим
+
+чтобы попасть на мирный нужна заявка
+пиши @pelmewki379
+
+скоро сайт с формой заявки"""
     await message.answer(text)
 
 
@@ -216,7 +203,7 @@ def _extract_mod_query(text: str) -> str:
         match = re.search(pattern, text_lower)
         if match:
             query = match.group(1).strip()
-            query = re.sub(r'\b(мод|моды|мне|пожалуйста|плиз)\b', '', query).strip()
+            query = re.sub(r'\b(мод|моды|мне|пожалуйста|плиз|плз)\b', '', query).strip()
             if query:
                 return query
     return ""
@@ -231,15 +218,12 @@ async def handle_chat_message(message: Message):
     if message.chat.type == "private":
         return
 
-    # Полное имя с юзернеймом для AI
-    display_name = get_user_display_name(message)
-    # Короткое имя для памяти
-    short_name = get_user_short_name(message)
+    username = message.from_user.first_name or message.from_user.username or "игрок"
     user_id = str(message.from_user.id)
     text = message.text
 
     # Сохраняем в память
-    await chat_memory.add_message(short_name, user_id, text)
+    await chat_memory.add_message(username, user_id, text)
 
     # Реакции
     await react_to_message(message)
@@ -251,13 +235,6 @@ async def handle_chat_message(message: Message):
     if not is_directed and not is_reply:
         return
 
-    # Проверка на особого пользователя
-    if any(word in text.lower() for word in ["кто", "создател", "владел", "юзернейм", "ник"]):
-        special = check_special_user(short_name)
-        if special:
-            await message.reply(special)
-            return
-
     # Поиск мода
     mod_query = _extract_mod_query(text)
     if mod_query:
@@ -266,35 +243,23 @@ async def handle_chat_message(message: Message):
         await message.reply(result)
         return
 
-    # Ответ через AI (передаём полное имя с юзернеймом)
+    # Ответ через AI
     await bot.send_chat_action(message.chat.id, action="typing")
-    response = await enderia_thinks(text, display_name, user_id)
+    response = await enderia_thinks(text, username, user_id)
     if response:
         await message.reply(response)
-
-
-@dp.callback_query(lambda c: c.data == "info_ip")
-async def callback_info_ip(callback: types.CallbackQuery):
-    online, max_players = await get_server_online()
-    text = f"""🌐 lostearth
-java: {JAVA_IP}
-bedrock: {BEDROCK_IP}:{BEDROCK_PORT}
-версии: {VERSIONS}
-👥 онлайн: {online}/{max_players}"""
-    await callback.message.edit_text(text, reply_markup=get_start_keyboard())
-    await callback.answer()
 
 
 # ========== ФОНОВЫЕ ЗАДАЧИ ==========
 
 async def spontaneous_loop():
-    print("💬 Спонтанные сообщения запущены")
+    print("💬 Цикл спонтанных сообщений запущен")
     while True:
         await asyncio.sleep(60)
         try:
             await spontaneous.send_if_needed(bot, config.GROUP_CHAT_ID)
         except Exception as e:
-            print(f"❌ Ошибка: {e}")
+            print(f"❌ Ошибка спонтанного: {e}")
 
 
 async def memory_cleanup_loop():
@@ -315,12 +280,12 @@ async def main():
     asyncio.create_task(spontaneous_loop())
     asyncio.create_task(memory_cleanup_loop())
 
-    print("✅ Энди запущена")
+    print("✅ Энди запущена и слушает чат")
 
     try:
         await dp.start_polling(bot)
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Критическая ошибка: {e}")
     finally:
         await chat_memory.close()
         await bot.session.close()
